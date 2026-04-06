@@ -28,6 +28,7 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hideLayout, setHideLayout] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -58,14 +59,14 @@ export default function App() {
   return (
     <Router>
       <Toaster position="top-center" richColors />
-      <Layout user={user}>
+      <Layout user={user} hideHeaderFooter={hideLayout}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
           <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/login" />} />
           <Route path="/upload" element={user ? <UploadWaste /> : <Navigate to="/login" />} />
           <Route path="/swaps" element={<SwapPage />} />
-          <Route path="/upcycle" element={<UpcycleForum />} />
+          <Route path="/upcycle" element={<UpcycleForum onModalToggle={setHideLayout} />} />
           <Route path="/request-swap/:itemId" element={user ? <RequestSwap /> : <Navigate to="/login" />} />
           <Route path="/chat/:requestId" element={user ? <ChatPage /> : <Navigate to="/login" />} />
           <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />

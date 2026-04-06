@@ -19,13 +19,19 @@ interface UpcyclePost {
   createdAt: any;
 }
 
-export default function UpcycleForum() {
+export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show: boolean) => void }) {
   const [posts, setPosts] = useState<UpcyclePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', description: '', imageUrl: '', videoUrl: '' });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (onModalToggle) {
+      onModalToggle(showCreateModal);
+    }
+  }, [showCreateModal, onModalToggle]);
 
   useEffect(() => {
     const q = query(collection(db, 'upcyclePosts'), orderBy('createdAt', 'desc'));
@@ -100,92 +106,96 @@ export default function UpcycleForum() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <header className="flex items-center justify-between mb-12">
-        <div>
-          <h1 className="text-4xl font-bold text-stone-900 tracking-tight">Upcycling DIY Forum</h1>
-          <p className="text-stone-500 mt-2">Share your creative transformations with the Chennai community</p>
-        </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setShowCreateModal(true)}
-          className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all"
-        >
-          <Plus className="w-5 h-5" />
-          Share Project
-        </motion.button>
-      </header>
+      {!showCreateModal && (
+        <header className="flex items-center justify-between mb-12">
+          <div>
+            <h1 className="text-4xl font-bold text-stone-900 tracking-tight">Upcycling DIY Forum</h1>
+            <p className="text-stone-500 mt-2">Share your creative transformations with the Chennai community</p>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowCreateModal(true)}
+            className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all"
+          >
+            <Plus className="w-5 h-5" />
+            Share Project
+          </motion.button>
+        </header>
+      )}
 
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {posts.map((post) => (
-            <motion.div
-              layout
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              key={post.id}
-              className="bg-white rounded-3xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-xl transition-all group"
-            >
-              <div className="relative aspect-square overflow-hidden bg-stone-100">
-                <img 
-                  src={post.imageUrl} 
-                  alt={post.title} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute top-4 left-4">
-                  <span className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-stone-600 shadow-sm">
-                    DIY Project
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
-                    {post.userName[0]}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-stone-900">{post.userName}</h3>
-                    <p className="text-xs text-stone-400">
-                      {post.createdAt?.seconds ? formatDistanceToNow(post.createdAt.seconds * 1000) + ' ago' : 'Just now'}
-                    </p>
+      {!showCreateModal && (
+        loading ? (
+          <div className="flex justify-center py-20">
+            <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {posts.map((post) => (
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={post.id}
+                className="bg-white rounded-3xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-xl transition-all group"
+              >
+                <div className="relative aspect-square overflow-hidden bg-stone-100">
+                  <img 
+                    src={post.imageUrl} 
+                    alt={post.title} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute top-4 left-4">
+                    <span className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-stone-600 shadow-sm">
+                      DIY Project
+                    </span>
                   </div>
                 </div>
 
-                <h2 className="text-xl font-bold text-stone-900 mb-2">{post.title}</h2>
-                <p className="text-stone-600 text-sm line-clamp-3 mb-6 leading-relaxed">
-                  {post.description}
-                </p>
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
+                      {post.userName[0]}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-stone-900">{post.userName}</h3>
+                      <p className="text-xs text-stone-400">
+                        {post.createdAt?.seconds ? formatDistanceToNow(post.createdAt.seconds * 1000) + ' ago' : 'Just now'}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="flex items-center justify-between pt-4 border-t border-stone-100">
-                  <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => handleLike(post.id, post.likedBy)}
-                      className={`flex items-center gap-1.5 transition-colors ${
-                        post.likedBy.includes(auth.currentUser?.uid || '') ? 'text-rose-500' : 'text-stone-400 hover:text-rose-500'
-                      }`}
-                    >
-                      <Heart className={`w-5 h-5 ${post.likedBy.includes(auth.currentUser?.uid || '') ? 'fill-current' : ''}`} />
-                      <span className="text-sm font-bold">{post.likes}</span>
+                  <h2 className="text-xl font-bold text-stone-900 mb-2">{post.title}</h2>
+                  <p className="text-stone-600 text-sm line-clamp-3 mb-6 leading-relaxed">
+                    {post.description}
+                  </p>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-stone-100">
+                    <div className="flex items-center gap-4">
+                      <button 
+                        onClick={() => handleLike(post.id, post.likedBy)}
+                        className={`flex items-center gap-1.5 transition-colors ${
+                          post.likedBy.includes(auth.currentUser?.uid || '') ? 'text-rose-500' : 'text-stone-400 hover:text-rose-500'
+                        }`}
+                      >
+                        <Heart className={`w-5 h-5 ${post.likedBy.includes(auth.currentUser?.uid || '') ? 'fill-current' : ''}`} />
+                        <span className="text-sm font-bold">{post.likes}</span>
+                      </button>
+                      <button className="flex items-center gap-1.5 text-stone-400 hover:text-emerald-600 transition-colors">
+                        <MessageSquare className="w-5 h-5" />
+                        <span className="text-sm font-bold">0</span>
+                      </button>
+                    </div>
+                    <button className="text-stone-400 hover:text-stone-600 transition-colors">
+                      <Share2 className="w-5 h-5" />
                     </button>
-                    <button className="flex items-center gap-1.5 text-stone-400 hover:text-emerald-600 transition-colors">
-                      <MessageSquare className="w-5 h-5" />
-                      <span className="text-sm font-bold">0</span>
-                    </button>
                   </div>
-                  <button className="text-stone-400 hover:text-stone-600 transition-colors">
-                    <Share2 className="w-5 h-5" />
-                  </button>
                 </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+              </motion.div>
+            ))}
+          </div>
+        )
       )}
 
       {/* Create Modal */}

@@ -22,9 +22,10 @@ interface Message {
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [language, setLanguage] = useState<'en' | 'ta'>('en');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: "Hello! I'm your Waste Swap Assistant. How can I help you today? You can ask me about waste segregation, swap advice, or how to use the platform. I also speak Tamil!" }
+    { role: 'model', text: "Hello! I'm your Waste Swap Assistant. How can I help you today?" }
   ]);
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -49,7 +50,7 @@ export default function ChatBot() {
     if (isListening) {
       recognition.stop();
     } else {
-      recognition.lang = 'en-IN'; // Default to English (India), can be switched to 'ta-IN'
+      recognition.lang = language === 'ta' ? 'ta-IN' : 'en-IN';
       recognition.start();
       setIsListening(true);
     }
@@ -115,7 +116,12 @@ export default function ChatBot() {
       const chat = ai.chats.create({
         model: "gemini-3-flash-preview",
         config: {
-          systemInstruction: "You are the official AI Assistant for the Waste Swap Network. Your goal is to help users manage waste, understand segregation (biodegradable vs non-biodegradable), provide advice on swapping items, and explain how the platform works. You are bilingual and can communicate fluently in both English and Tamil. Be professional, helpful, and culturally aware of Chennai's waste management context. Keep responses concise and use markdown for formatting.",
+          systemInstruction: `You are the official AI Assistant for the Waste Swap Network. Your goal is to help users manage waste, understand segregation (biodegradable vs non-biodegradable), provide advice on swapping items, and explain how the platform works. 
+          
+          CURRENT LANGUAGE PREFERENCE: ${language === 'ta' ? 'Tamil' : 'English'}. 
+          Please respond primarily in ${language === 'ta' ? 'Tamil' : 'English'}. If the user switches language, you can follow, but respect the current UI setting.
+          
+          Be professional, helpful, and culturally aware of Chennai's waste management context. Keep responses concise and use markdown for formatting.`,
         },
         history: messages.map(m => ({
           role: m.role,
@@ -140,6 +146,7 @@ export default function ChatBot() {
       <AnimatePresence>
         {isOpen && (
           <motion.div
+            key="chatbot-window"
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ 
               opacity: 1, 
@@ -149,10 +156,10 @@ export default function ChatBot() {
               width: '350px'
             }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="bg-white/90 backdrop-blur-xl border border-stone-200 rounded-3xl shadow-2xl overflow-hidden mb-4 flex flex-col"
+            className="bg-white/90 backdrop-blur-xl border border-stone-200 rounded-3xl shadow-2xl overflow-hidden mb-4 flex flex-col relative z-50"
           >
             {/* Header */}
-            <div className="p-4 bg-emerald-600 text-white flex items-center justify-between">
+            <div className="w-full flex-shrink-0 min-h-[64px] p-4 bg-emerald-600 text-white flex items-center justify-between relative z-10">
               <div className="flex items-center gap-2">
                 <div className="bg-white/20 p-1.5 rounded-lg">
                   <Bot className="w-5 h-5" />
@@ -166,6 +173,24 @@ export default function ChatBot() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <div className="flex bg-white/10 rounded-lg p-0.5 mr-1">
+                  <button
+                    onClick={() => setLanguage('en')}
+                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${
+                      language === 'en' ? 'bg-white text-emerald-600' : 'text-white hover:bg-white/10'
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    onClick={() => setLanguage('ta')}
+                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${
+                      language === 'ta' ? 'bg-white text-emerald-600' : 'text-white hover:bg-white/10'
+                    }`}
+                  >
+                    தமிழ்
+                  </button>
+                </div>
                 <button 
                   onClick={() => setIsSpeaking(!isSpeaking)}
                   className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"

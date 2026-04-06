@@ -5,6 +5,7 @@ import { auth, db } from '../firebase';
 import { motion } from 'motion/react';
 import { ArrowRight, Recycle, Award, Package, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import WasteCard from '../components/WasteCard';
+import { toast } from 'sonner';
 
 export default function RequestSwap() {
   const { itemId } = useParams();
@@ -86,22 +87,22 @@ export default function RequestSwap() {
     if (!auth.currentUser || !item) return;
     
     if (offerType === 'item' && !selectedMyItemId) {
-      alert('Please select an item to offer in exchange.');
+      toast.error('Please select an item to offer in exchange.');
       return;
     }
     
     if (offerType === 'rupees' && offeredRupees <= 0) {
-      alert('Please enter a valid amount of Rupees.');
+      toast.error('Please enter a valid amount of Rupees.');
       return;
     }
-
+ 
     if (offerType === 'upi' && (!paymentConfirmed || offeredRupees <= 0)) {
-      alert('Please complete the UPI payment and confirm it manually.');
+      toast.error('Please complete the UPI payment and confirm it manually.');
       return;
     }
-
+ 
     if (!pickupDate || !pickupTime || !pickupLocation) {
-      alert('Please provide all pickup details.');
+      toast.error('Please provide all pickup details.');
       return;
     }
 
@@ -147,13 +148,15 @@ export default function RequestSwap() {
       });
 
       if (offerType === 'rupees') {
+        toast.info('Redirecting to secure payment...');
         await initiateStripePayment(offeredRupees, docRef.id, item.title);
       } else {
+        toast.success('Swap request sent successfully! 🤝');
         navigate(`/chat/${docRef.id}`);
       }
     } catch (error) {
       console.error('Error submitting swap request:', error);
-      alert('Failed to submit request. Please try again.');
+      toast.error('Failed to submit request. Please try again.');
     } finally {
       setSubmitting(false);
     }

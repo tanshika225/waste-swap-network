@@ -4,6 +4,7 @@ import { auth, db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, MessageSquare, Share2, Plus, X, Image as ImageIcon, Video, Loader2, Send, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 interface UpcyclePost {
   id: string;
@@ -88,8 +89,10 @@ export default function UpcycleForum() {
       });
       setShowCreateModal(false);
       setNewPost({ title: '', description: '', imageUrl: '', videoUrl: '' });
+      toast.success('Project shared successfully! 🎉');
     } catch (error) {
       console.error("Error creating post:", error);
+      toast.error('Failed to share project. Please try again.');
     } finally {
       setUploading(false);
     }

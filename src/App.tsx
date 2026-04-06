@@ -22,6 +22,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
+import { Toaster } from 'sonner';
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -55,6 +57,7 @@ export default function App() {
 
   return (
     <Router>
+      <Toaster position="top-center" richColors />
       <Layout user={user}>
         <Routes>
           <Route path="/" element={<Home />} />

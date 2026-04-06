@@ -6,6 +6,7 @@ import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
 import { Leaf, Award, TrendingUp, Package, ArrowRight, MessageSquare, Star, MapPin, Zap } from 'lucide-react';
 import axios from 'axios';
+import { toast } from 'sonner';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -141,9 +142,10 @@ export default function Dashboard() {
       }
 
       await batch.commit();
+      toast.success(`Request ${status} successfully!`);
     } catch (error) {
       console.error('Error updating request:', error);
-      alert('Failed to update request. Please try again.');
+      toast.error('Failed to update request. Please try again.');
     }
   };
 

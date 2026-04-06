@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, Camera, Loader2, CheckCircle2, Scale, Leaf, Info, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getCurrentLocation, Location } from '../lib/location';
+import { toast } from 'sonner';
 
 export default function UploadWaste() {
   const [file, setFile] = useState<File | null>(null);
@@ -82,9 +83,11 @@ export default function UploadWaste() {
         createdAt: serverTimestamp(),
         location: userLocation || { lat: 13.0827, lng: 80.2707 } // Use user location or default Chennai
       });
+      toast.success('Item listed for swap successfully! ♻️');
       navigate('/dashboard');
     } catch (error) {
       console.error('Upload failed:', error);
+      toast.error('Failed to list item. Please try again.');
     } finally {
       setLoading(false);
     }

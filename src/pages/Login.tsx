@@ -13,7 +13,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
-
+  
   const createUserProfile = async (user: any) => {
     const userRef = doc(db, 'users', user.uid);
     const userSnap = await getDoc(userRef);

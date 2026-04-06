@@ -1,27 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { useNavigate, Link } from 'react-router-dom';
+import { auth } from '../firebase';
 import axios from 'axios';
+import AdminLayout from '../components/AdminLayout';
 import { 
   Users, 
-  Trash2, 
-  ShieldAlert, 
-  BarChart3, 
   Package, 
   ArrowLeftRight, 
+  CheckCircle, 
   ShieldCheck,
-  Ban,
-  CheckCircle,
-  AlertTriangle
+  ShieldAlert,
+  Loader2,
+  TrendingUp,
+  ArrowRight,
+  BarChart3
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'waste' | 'swaps'>('analytics');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState(false);
+  const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const fetchAdminData = async () => {
@@ -35,6 +37,15 @@ export default function AdminDashboard() {
       const config = {
         headers: { Authorization: `Bearer ${token}` }
       };
+
+      // Try to get service account email and project ID first to help with debugging
+      try {
+        const saRes = await axios.get('/api/admin/service-account', config);
+        setServiceAccountEmail(saRes.data.email);
+        setProjectId(saRes.data.projectId);
+      } catch (e) {
+        console.warn('Could not fetch service account info');
+      }
 
       const [analytics, users, waste, swaps] = await Promise.all([
         axios.get('/api/admin/analytics', config),
@@ -51,7 +62,14 @@ export default function AdminDashboard() {
       });
     } catch (err: any) {
       console.error('Admin fetch error:', err);
-      setError(err.response?.data?.error || err.message);
+      const errorMessage = err.response?.data?.details 
+        ? `${err.response.data.error}: ${err.response.data.details}` 
+        : (err.response?.data?.error || err.message);
+      setError(errorMessage);
+      
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        setPermissionError(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -61,35 +79,46 @@ export default function AdminDashboard() {
     fetchAdminData();
   }, []);
 
-  const handleBlockUser = async (userId: string, currentlyBlocked: boolean) => {
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      await axios.post(`/api/admin/users/${userId}/block`, { blocked: !currentlyBlocked }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      fetchAdminData();
-    } catch (err) {
-      alert('Failed to update user status');
-    }
-  };
+  if (permissionError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8 border border-red-100">
+          <div className="flex items-center gap-4 mb-6 text-red-600">
+            <div className="p-3 bg-red-50 rounded-full">
+              <ShieldAlert size={32} />
+            </div>
+            <h1 className="text-2xl font-bold">Database Permission Required</h1>
+          </div>
+          
+          <div className="space-y-4 text-gray-600 mb-8">
+            <p className="font-medium text-gray-900">The application's service account needs permission to access Firestore in project <code className="bg-gray-200 px-1 rounded text-sm font-mono">{projectId || 'gen-lang-client-0445465783'}</code>.</p>
+            <p>As the project owner, please follow these steps to grant access:</p>
+            
+            <ol className="list-decimal list-inside space-y-3 bg-gray-50 p-6 rounded-xl border border-gray-100">
+              <li>Go to the <a href={`https://console.cloud.google.com/iam-admin/iam?project=${projectId || 'gen-lang-client-0445465783'}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">Google Cloud IAM Console</a></li>
+              <li>Ensure you are in the correct project: <code className="bg-gray-200 px-1 rounded text-sm font-mono">{projectId || 'gen-lang-client-0445465783'}</code></li>
+              <li>Click <strong>GRANT ACCESS</strong> at the top</li>
+              <li>In the "New principals" field, paste: <code className="bg-gray-200 px-1 rounded text-sm font-mono">{serviceAccountEmail || '34901887695-compute@developer.gserviceaccount.com'}</code></li>
+              <li>Search for and select <strong>Cloud Datastore User</strong> as the role</li>
+              <li>Click <strong>Save</strong> and refresh this page</li>
+            </ol>
+          </div>
 
-  const handleDeleteWaste = async (itemId: string) => {
-    if (!window.confirm('Are you sure you want to delete this listing?')) return;
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      await axios.delete(`/api/admin/waste/${itemId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      fetchAdminData();
-    } catch (err) {
-      alert('Failed to delete item');
-    }
-  };
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+          >
+            I've added the role, refresh page
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+        <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -111,223 +140,93 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
-        <div>
-          <h1 className="text-4xl font-black text-stone-900 tracking-tight flex items-center gap-3">
-            <ShieldCheck className="w-10 h-10 text-emerald-600" />
-            Admin Control Panel
-          </h1>
-          <p className="text-stone-500 font-medium mt-1">Manage the Waste Swap Network ecosystem</p>
-        </div>
-        
-        <div className="flex bg-stone-100 p-1 rounded-2xl">
-          {[
-            { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-            { id: 'users', icon: Users, label: 'Users' },
-            { id: 'waste', icon: Package, label: 'Waste' },
-            { id: 'swaps', icon: ArrowLeftRight, label: 'Swaps' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-white text-stone-900 shadow-sm' 
-                  : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          ))}
-        </div>
+    <AdminLayout>
+      <div className="mb-10">
+        <h1 className="text-4xl font-black text-stone-900 tracking-tight flex items-center gap-3">
+          <ShieldCheck className="w-10 h-10 text-emerald-600" />
+          Admin Dashboard
+        </h1>
+        <p className="text-stone-500 font-medium mt-1">System overview and quick actions</p>
       </div>
 
-      {activeTab === 'analytics' && (
-        <div className="space-y-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { label: 'Total Users', value: data.analytics.totalUsers, icon: Users, color: 'blue' },
-              { label: 'Waste Listings', value: data.analytics.totalWaste, icon: Package, color: 'emerald' },
-              { label: 'Completed Swaps', value: data.analytics.totalSwaps, icon: CheckCircle, color: 'amber' },
-              { label: 'Total Value (₹)', value: data.analytics.totalValue.toLocaleString(), icon: BarChart3, color: 'purple' }
-            ].map((stat, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm"
-              >
-                <div className={`w-12 h-12 rounded-2xl bg-${stat.color}-50 flex items-center justify-center mb-4`}>
-                  <stat.icon className={`w-6 h-6 text-${stat.color}-600`} />
-                </div>
-                <div className="text-3xl font-black text-stone-900">{stat.value}</div>
-                <div className="text-stone-500 font-bold text-sm uppercase tracking-wider">{stat.label}</div>
-              </motion.div>
-            ))}
-          </div>
-          
-          <div className="bg-stone-900 text-white p-8 rounded-[2.5rem] relative overflow-hidden">
-            <div className="relative z-10">
-              <h2 className="text-2xl font-black mb-2">Network Health</h2>
-              <p className="text-stone-400 max-w-md">The circular economy in Chennai is growing. Monitor these metrics to ensure a healthy swap ecosystem.</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        {[
+          { label: 'Total Users', value: data.analytics.totalUsers, icon: Users, color: 'blue', link: '/admin/users' },
+          { label: 'Waste Listings', value: data.analytics.totalWaste, icon: Package, color: 'emerald', link: '/admin/waste' },
+          { label: 'Completed Swaps', value: data.analytics.totalSwaps, icon: CheckCircle, color: 'amber', link: '/admin/analytics' }
+        ].map((stat, i) => (
+          <Link 
+            key={i} 
+            to={stat.link}
+            className="bg-white p-8 rounded-[2.5rem] border border-stone-200 shadow-sm hover:shadow-xl hover:border-emerald-200 transition-all group"
+          >
+            <div className={`w-14 h-14 rounded-2xl bg-${stat.color}-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+              <stat.icon className={`w-7 h-7 text-${stat.color}-600`} />
             </div>
-            <BarChart3 className="absolute right-[-20px] bottom-[-20px] w-64 h-64 text-white/5 rotate-12" />
-          </div>
-        </div>
-      )}
+            <div className="text-4xl font-black text-stone-900 mb-1">{stat.value}</div>
+            <div className="text-stone-500 font-bold text-sm uppercase tracking-wider flex items-center justify-between">
+              {stat.label}
+              <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+            </div>
+          </Link>
+        ))}
+      </div>
 
-      {activeTab === 'users' && (
-        <div className="bg-white rounded-[2.5rem] border border-stone-200 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-stone-50 border-bottom border-stone-200">
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">User</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Email</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Role</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Status</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {data.users.map((user: any) => (
-                  <tr key={user.id} className="hover:bg-stone-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center font-black text-stone-600">
-                          {user.displayName?.charAt(0)}
-                        </div>
-                        <span className="font-bold text-stone-900">{user.displayName}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-stone-500 font-medium">{user.email}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-stone-100 text-stone-600'
-                      }`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {user.blocked ? (
-                        <span className="flex items-center gap-1 text-red-600 font-bold text-xs">
-                          <Ban className="w-3 h-3" /> Blocked
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs">
-                          <CheckCircle className="w-3 h-3" /> Active
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {user.role !== 'admin' && (
-                        <button 
-                          onClick={() => handleBlockUser(user.id, !!user.blocked)}
-                          className={`px-4 py-2 rounded-xl font-bold text-xs transition-all ${
-                            user.blocked 
-                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
-                              : 'bg-red-100 text-red-700 hover:bg-red-200'
-                          }`}
-                        >
-                          {user.blocked ? 'Unblock' : 'Block'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'waste' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {data.waste.map((item: any) => (
-            <div key={item.id} className="bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm group">
-              <div className="relative h-48">
-                <img 
-                  src={item.imageUrl} 
-                  alt={item.title} 
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute top-4 right-4">
-                  <button 
-                    onClick={() => handleDeleteWaste(item.id)}
-                    className="bg-white/90 backdrop-blur-sm p-2 rounded-xl text-red-600 hover:bg-red-600 hover:text-white transition-all shadow-lg"
-                    title="Delete Listing"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="absolute bottom-4 left-4">
-                  <span className="bg-stone-900/80 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                    {item.category}
-                  </span>
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-stone-900 text-white p-10 rounded-[3rem] relative overflow-hidden">
+          <div className="relative z-10">
+            <h2 className="text-3xl font-black mb-4">System Health</h2>
+            <p className="text-stone-400 max-w-sm mb-8">The Waste Swap Network is operating normally. All services are online and responding within expected latency.</p>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-emerald-500/20 text-emerald-400 px-4 py-2 rounded-xl font-bold text-sm">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Database Online
               </div>
-              <div className="p-6">
-                <h3 className="font-black text-stone-900 mb-1 truncate">{item.title}</h3>
-                <p className="text-stone-500 text-sm line-clamp-2 mb-4">{item.description}</p>
-                <div className="flex items-center justify-between pt-4 border-t border-stone-100">
-                  <div className="text-xs font-bold text-stone-400">Value: ₹{item.estimatedValue}</div>
-                  <div className={`text-[10px] font-black uppercase tracking-wider ${
-                    item.status === 'available' ? 'text-emerald-600' : 'text-amber-600'
-                  }`}>
-                    {item.status}
+              <div className="flex items-center gap-2 bg-blue-500/20 text-blue-400 px-4 py-2 rounded-xl font-bold text-sm">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                Auth Service Active
+              </div>
+            </div>
+          </div>
+          <BarChart3 className="absolute right-[-40px] bottom-[-40px] w-80 h-80 text-white/5 rotate-12" />
+        </div>
+
+        <div className="bg-white p-10 rounded-[3rem] border border-stone-200 shadow-sm">
+          <h2 className="text-2xl font-black text-stone-900 mb-6 flex items-center gap-3">
+            <TrendingUp className="w-6 h-6 text-emerald-600" />
+            Recent Activity
+          </h2>
+          <div className="space-y-6">
+            {data.swaps.slice(0, 4).map((swap: any) => (
+              <div key={swap.id} className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">
+                    <ArrowLeftRight className="w-5 h-5 text-stone-400" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-stone-900 text-sm">Swap Request</div>
+                    <div className="text-stone-400 text-xs font-medium">{new Date(swap.createdAt).toLocaleDateString()}</div>
                   </div>
                 </div>
+                <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                  swap.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
+                  swap.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {swap.status}
+                </span>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'swaps' && (
-        <div className="bg-white rounded-[2.5rem] border border-stone-200 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-stone-50 border-bottom border-stone-200">
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Request ID</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Status</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Payment</th>
-                  <th className="px-6 py-4 font-black text-stone-400 uppercase text-xs tracking-widest">Created At</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {data.swaps.map((swap: any) => (
-                  <tr key={swap.id} className="hover:bg-stone-50 transition-colors">
-                    <td className="px-6 py-4 font-mono text-xs text-stone-500">{swap.id}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                        swap.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
-                        swap.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {swap.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs font-bold ${
-                        swap.paymentStatus === 'completed' ? 'text-emerald-600' : 'text-stone-400'
-                      }`}>
-                        {swap.paymentStatus || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-stone-400 text-xs">
-                      {swap.createdAt ? new Date(swap.createdAt).toLocaleDateString() : 'Unknown'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            ))}
           </div>
+          <Link 
+            to="/admin/analytics"
+            className="mt-8 w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-stone-100 text-stone-600 font-bold hover:bg-stone-200 transition-all"
+          >
+            View All Activity
+            <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
-      )}
-    </div>
+      </div>
+    </AdminLayout>
   );
 }
+

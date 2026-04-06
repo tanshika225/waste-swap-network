@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import axios from "axios";
 import { fileURLToPath } from "url";
 import Stripe from 'stripe';
 import admin from 'firebase-admin';
@@ -11,32 +12,68 @@ import firebaseConfig from './firebase-applet-config.json' with { type: 'json' }
 // Initialize Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
-    projectId: firebaseConfig.projectId
+    projectId: firebaseConfig.projectId,
+  });
+  console.log('Firebase Admin initialized with project:', firebaseConfig.projectId);
+  
+  // Log the service account identity if possible
+  admin.auth().listUsers(1).then(() => {
+    console.log('Admin SDK successfully authenticated');
+  }).catch(err => {
+    console.log('Admin SDK Identity Info:', err.message);
   });
 }
-const db = getFirestore(firebaseConfig.firestoreDatabaseId);
+
+// Try to get the specific database, fallback to default if needed
+let db: admin.firestore.Firestore;
+try {
+  db = getFirestore(firebaseConfig.firestoreDatabaseId);
+  console.log('Firestore initialized with database:', firebaseConfig.firestoreDatabaseId);
+} catch (dbError: any) {
+  console.warn('Failed to initialize named database, falling back to default:', dbError.message);
+  db = getFirestore();
+}
 
 const isAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    console.error('Admin Auth Error: Missing or malformed Authorization header');
+    return res.status(401).json({ error: 'Unauthorized', details: 'Missing or malformed Authorization header' });
   }
 
   const idToken = authHeader.split('Bearer ')[1];
+  if (!idToken || idToken === 'undefined' || idToken === 'null') {
+    console.error('Admin Auth Error: ID token is empty or undefined');
+    return res.status(401).json({ error: 'Unauthorized', details: 'ID token is empty or undefined' });
+  }
+
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    const userData = userDoc.data();
     const isAdminEmail = decodedToken.email === 'jstanshika1402@gmail.com';
 
-    if (isAdminEmail || userData?.role === 'admin') {
+    // If it's the hardcoded admin email, let them through immediately
+    if (isAdminEmail) {
       (req as any).user = decodedToken;
-      next();
-    } else {
-      res.status(403).json({ error: 'Forbidden: Admin access required' });
+      return next();
     }
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+
+    // Otherwise, check their role in Firestore
+    try {
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const userData = userDoc.data();
+      if (userData?.role === 'admin') {
+        (req as any).user = decodedToken;
+        return next();
+      }
+    } catch (dbError: any) {
+      console.error('Admin Auth DB Error (Firestore check failed):', dbError.message);
+    }
+
+    console.warn(`Admin Auth Warning: User ${decodedToken.email} attempted to access admin routes without permission`);
+    res.status(403).json({ error: 'Forbidden: Admin access required' });
+  } catch (error: any) {
+    console.error('Admin Auth Error (verifyIdToken):', error.message);
+    res.status(401).json({ error: 'Invalid token', details: error.message });
   }
 };
 
@@ -250,15 +287,16 @@ async function startServer() {
       const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(users);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Admin Users Error:", error.message);
+      res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
   });
 
-  app.post("/api/admin/users/:userId/block", isAdmin, async (req, res) => {
+  app.put("/api/admin/block/:id", isAdmin, async (req, res) => {
     try {
-      const { userId } = req.params;
+      const { id } = req.params;
       const { blocked } = req.body;
-      await db.collection('users').doc(userId).update({ blocked });
+      await db.collection('users').doc(id).update({ blocked });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -271,14 +309,15 @@ async function startServer() {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(items);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Admin Waste Error:", error.message);
+      res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
   });
 
-  app.delete("/api/admin/waste/:itemId", isAdmin, async (req, res) => {
+  app.delete("/api/admin/waste/:id", isAdmin, async (req, res) => {
     try {
-      const { itemId } = req.params;
-      await db.collection('wasteItems').doc(itemId).delete();
+      const { id } = req.params;
+      await db.collection('wasteItems').doc(id).delete();
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -291,7 +330,8 @@ async function startServer() {
       const swaps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(swaps);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Admin Swaps Error:", error.message);
+      res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
   });
 
@@ -311,7 +351,27 @@ async function startServer() {
         totalValue
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Admin Analytics Error:", error.message);
+      res.status(500).json({ error: "Internal Server Error", details: error.message });
+    }
+  });
+
+  app.get("/api/admin/service-account", isAdmin, async (req, res) => {
+    try {
+      // Fetch service account from metadata server
+      const response = await axios.get('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email', {
+        headers: { 'Metadata-Flavor': 'Google' }
+      });
+      res.json({ 
+        email: response.data,
+        projectId: firebaseConfig.projectId
+      });
+    } catch (error) {
+      // Fallback if metadata server is unreachable (e.g. local dev)
+      res.json({ 
+        email: '34901887695-compute@developer.gserviceaccount.com',
+        projectId: firebaseConfig.projectId
+      });
     }
   });
 

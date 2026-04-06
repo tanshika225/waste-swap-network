@@ -45,7 +45,11 @@ export default function Login() {
       navigate('/dashboard');
     } catch (error: any) {
       console.error('Google login failed:', error);
-      toast.error(error.message || 'Google login failed');
+      if (error.code === 'auth/popup-blocked') {
+        toast.error('Login popup was blocked by your browser. Please allow popups for this site and try again.');
+      } else {
+        toast.error(error.message || 'Google login failed');
+      }
     } finally {
       setLoading(false);
     }

@@ -20,6 +20,9 @@ import UpcycleForum from './pages/UpcycleForum';
 import ResetPassword from './pages/ResetPassword';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import ManageUsers from './pages/admin/ManageUsers';
+import ManageWaste from './pages/admin/ManageWaste';
+import Analytics from './pages/admin/Analytics';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -76,6 +79,9 @@ export default function App() {
           {/* Admin Routes */}
           <Route path="/admin/login" element={user && isAdmin ? <Navigate to="/admin/dashboard" /> : <AdminLogin />} />
           <Route path="/admin/dashboard" element={user && isAdmin ? <AdminDashboard /> : <Navigate to="/admin/login" />} />
+          <Route path="/admin/users" element={user && isAdmin ? <ManageUsers /> : <Navigate to="/admin/login" />} />
+          <Route path="/admin/waste" element={user && isAdmin ? <ManageWaste /> : <Navigate to="/admin/login" />} />
+          <Route path="/admin/analytics" element={user && isAdmin ? <Analytics /> : <Navigate to="/admin/login" />} />
         </Routes>
       </Layout>
     </Router>

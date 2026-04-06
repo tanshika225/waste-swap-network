@@ -43,7 +43,11 @@ export default function AdminLogin() {
       }
     } catch (error: any) {
       console.error('Admin login failed:', error);
-      setError(error.message);
+      if (error.code === 'auth/popup-blocked') {
+        setError('Login popup was blocked by your browser. Please allow popups for this site and try again.');
+      } else {
+        setError(error.message);
+      }
     } finally {
       setLoading(false);
     }

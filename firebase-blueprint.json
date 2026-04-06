@@ -1,0 +1,132 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information and eco-credits.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "User's display name" },
+        "email": { "type": "string", "format": "email", "description": "User's email" },
+        "role": { "type": "string", "enum": ["user", "worker", "admin"], "description": "User role" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "impact": {
+          "type": "object",
+          "properties": {
+            "recycled": { "type": "number" },
+            "reused": { "type": "number" },
+            "co2Saved": { "type": "number" }
+          }
+        },
+        "blocked": { "type": "boolean", "description": "Whether the user is blocked by admin" }
+      },
+      "required": ["uid", "displayName", "email", "role"]
+    },
+    "WasteItem": {
+      "title": "WasteItem",
+      "description": "A waste item uploaded for swapping.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "UID of the owner" },
+        "title": { "type": "string", "description": "Title of the item" },
+        "description": { "type": "string", "description": "Description of the item" },
+        "category": { "type": "string", "enum": ["plastic", "paper", "metal", "glass", "organic", "other"], "description": "AI-classified category" },
+        "isBiodegradable": { "type": "boolean", "description": "Whether the waste is biodegradable" },
+        "estimatedWeightKg": { "type": "number", "description": "AI-estimated weight in kilograms" },
+        "imageUrl": { "type": "string", "format": "uri", "description": "Image URL" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "status": { "type": "string", "enum": ["available", "pending", "swapped"], "description": "Current status" },
+        "condition": { "type": "string", "enum": ["excellent", "good", "fair", "poor", "scrap"], "description": "AI-assessed condition" },
+        "repairability": { "type": "string", "enum": ["high", "medium", "low", "none"], "description": "AI-assessed repairability" },
+        "estimatedValue": { "type": "number", "description": "Estimated value in Rupees (₹)" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "title", "category", "imageUrl", "status", "estimatedValue"]
+    },
+    "SwapRequest": {
+      "title": "SwapRequest",
+      "description": "A request to swap a waste item.",
+      "type": "object",
+      "properties": {
+        "itemId": { "type": "string", "description": "ID of the waste item being requested" },
+        "requesterId": { "type": "string", "description": "UID of the requester" },
+        "ownerId": { "type": "string", "description": "UID of the owner" },
+        "offeredItemId": { "type": "string", "description": "ID of the item offered in exchange (optional)" },
+        "offeredRupees": { "type": "number", "description": "Amount of Rupees offered in exchange (optional)" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "completed"], "description": "Request status" },
+        "paymentMethod": { "type": "string", "enum": ["stripe", "upi"], "description": "Method of payment" },
+        "paymentStatus": { "type": "string", "enum": ["pending", "completed", "failed"], "description": "Status of the payment" },
+        "paymentConfirmedAt": { "type": "string", "format": "date-time", "description": "When the user confirmed the payment" },
+        "pickupDate": { "type": "string", "format": "date", "description": "Scheduled pickup date" },
+        "pickupTime": { "type": "string", "format": "time", "description": "Scheduled pickup time" },
+        "pickupLocation": { "type": "string", "description": "Pickup address or location" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["itemId", "requesterId", "ownerId", "status"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message in a swap negotiation chat.",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "description": "ID of the associated swap request" },
+        "senderId": { "type": "string", "description": "UID of the sender" },
+        "text": { "type": "string", "description": "Message content" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestId", "senderId", "text", "createdAt"]
+    },
+    "UpcyclePost": {
+      "title": "UpcyclePost",
+      "description": "A post sharing an upcycled item creation.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the poster" },
+        "userName": { "type": "string", "description": "Display name of the poster" },
+        "title": { "type": "string", "description": "Title of the upcycling project" },
+        "description": { "type": "string", "description": "How it was made" },
+        "imageUrl": { "type": "string", "format": "uri", "description": "Image of the result" },
+        "videoUrl": { "type": "string", "format": "uri", "description": "Optional video URL" },
+        "wasteItemId": { "type": "string", "description": "Original waste item ID (optional)" },
+        "likes": { "type": "number", "description": "Number of likes" },
+        "likedBy": { "type": "array", "items": { "type": "string" }, "description": "List of UIDs who liked the post" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "title", "description", "imageUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/wasteItems/{itemId}": {
+      "schema": "WasteItem",
+      "description": "Available waste items"
+    },
+    "/swapRequests/{requestId}": {
+      "schema": "SwapRequest",
+      "description": "Swap requests between users"
+    },
+    "/swapRequests/{requestId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages for a specific swap request"
+    },
+    "/upcyclePosts/{postId}": {
+      "schema": "UpcyclePost",
+      "description": "Community upcycling DIY posts"
+    }
+  }
+}

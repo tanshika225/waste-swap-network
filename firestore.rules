@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "jstanshika1402@gmail.com" && request.auth.token.email_verified == true));
+    }
+    function isNotBlocked() {
+      return !('blocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.blocked == false;
+    }
+    function isAuthorized() {
+      return isAuthenticated() && (isNotBlocked() || isAdmin());
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+    function isValidTimeString(timeStr) {
+      return timeStr is string &&
+        timeStr.matches("^\\d{2}:\\d{2}$");
+    }
+
+    // ===============================================================
+    // User Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && 
+        request.resource.data.role == 'user';
+      allow update: if (isOwner(userId) && 
+        request.resource.data.role == resource.data.role && isNotBlocked()) || isAdmin();
+    }
+
+    // ===============================================================
+    // Waste Item Rules
+    // ===============================================================
+    match /wasteItems/{itemId} {
+      allow read: if true;
+      allow create: if isAuthorized() && 
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.estimatedValue is number &&
+        request.resource.data.estimatedValue >= 0 &&
+        request.resource.data.isBiodegradable is bool &&
+        request.resource.data.estimatedWeightKg is number;
+      allow update: if isAuthorized() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow delete: if isAuthorized() && (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    // ===============================================================
+    // Swap Request Rules
+    // ===============================================================
+    match /swapRequests/{requestId} {
+      allow read: if isAuthenticated() && (resource.data.requesterId == request.auth.uid || resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isAuthorized() && 
+        request.resource.data.requesterId == request.auth.uid &&
+        (request.resource.data.offeredRupees == null || request.resource.data.offeredRupees >= 0) &&
+        (request.resource.data.paymentMethod == null || request.resource.data.paymentMethod in ['stripe', 'upi']) &&
+        (request.resource.data.paymentStatus == null || request.resource.data.paymentStatus in ['pending', 'completed', 'failed']) &&
+        isValidDateString(request.resource.data.pickupDate) &&
+        isValidTimeString(request.resource.data.pickupTime) &&
+        request.resource.data.pickupLocation is string &&
+        request.resource.data.pickupLocation.size() > 0 &&
+        request.resource.data.pickupLocation.size() < 500;
+      allow update: if isAuthorized() && (resource.data.requesterId == request.auth.uid || resource.data.ownerId == request.auth.uid || isAdmin()) &&
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paymentStatus', 'paymentConfirmedAt']) || isAdmin());
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/swapRequests/$(requestId)).data.requesterId == request.auth.uid || get(/databases/$(database)/documents/swapRequests/$(requestId)).data.ownerId == request.auth.uid || isAdmin());
+        allow create: if isAuthorized() && request.resource.data.senderId == request.auth.uid && (get(/databases/$(database)/documents/swapRequests/$(requestId)).data.requesterId == request.auth.uid || get(/databases/$(database)/documents/swapRequests/$(requestId)).data.ownerId == request.auth.uid);
+      }
+    }
+
+    // ===============================================================
+    // Upcycle Post Rules
+    // ===============================================================
+    match /upcyclePosts/{postId} {
+      allow read: if true;
+      allow create: if isAuthorized() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthorized() && (
+        (resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy']))
+      );
+      allow delete: if isAuthorized() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+  }
+}

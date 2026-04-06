@@ -17,6 +17,7 @@ import RequestSwap from './pages/RequestSwap';
 import ChatPage from './pages/ChatPage';
 import Profile from './pages/Profile';
 import UpcycleForum from './pages/UpcycleForum';
+import ResetPassword from './pages/ResetPassword';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import { doc, getDoc } from 'firebase/firestore';
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/request-swap/:itemId" element={user ? <RequestSwap /> : <Navigate to="/login" />} />
           <Route path="/chat/:requestId" element={user ? <ChatPage /> : <Navigate to="/login" />} />
           <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
           {/* Admin Routes */}
           <Route path="/admin/login" element={user && isAdmin ? <Navigate to="/admin/dashboard" /> : <AdminLogin />} />

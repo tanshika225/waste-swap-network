@@ -10,7 +10,9 @@ import firebaseConfig from './firebase-applet-config.json' with { type: 'json' }
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId
+  });
 }
 const db = getFirestore(firebaseConfig.firestoreDatabaseId);
 

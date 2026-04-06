@@ -60,7 +60,7 @@ export default function AdminLogin() {
           <ShieldCheck className="w-12 h-12 text-emerald-400" />
         </div>
         <h1 className="text-3xl font-black text-stone-900 mb-2 tracking-tight">Admin Portal</h1>
-        <p className="text-stone-500 mb-10 font-medium">Restricted access for Chennai Waste Swap Network administrators.</p>
+        <p className="text-stone-500 mb-10 font-medium">Restricted access for Waste Swap Network administrators.</p>
         
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold text-left">

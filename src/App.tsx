@@ -49,7 +49,7 @@ export default function App() {
       <div className="min-h-screen flex items-center justify-center bg-stone-50">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="w-12 h-12 bg-emerald-200 rounded-full"></div>
-          <div className="text-stone-400 font-medium">Loading Chennai Waste Swap...</div>
+          <div className="text-stone-400 font-medium">Loading Waste Swap Network...</div>
         </div>
       </div>
     );

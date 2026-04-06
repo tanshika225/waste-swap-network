@@ -56,7 +56,7 @@ export default function Login() {
           <Recycle className="w-12 h-12 text-emerald-600" />
         </div>
         <h1 className="text-3xl font-bold text-stone-900 mb-2">Welcome Back</h1>
-        <p className="text-stone-500 mb-10">Join the Chennai Waste Swap Network and start your sustainable journey.</p>
+        <p className="text-stone-500 mb-10">Join the Waste Swap Network and start your sustainable journey.</p>
         
         <button
           onClick={handleGoogleLogin}

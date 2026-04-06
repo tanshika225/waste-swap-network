@@ -62,8 +62,8 @@ export default function Layout({ children, user }: { children: React.ReactNode, 
                 <Recycle className="w-6 h-6 text-white" />
               </div>
               <div className="flex flex-col">
-                <span className="font-black text-xl tracking-tight leading-none text-stone-900">Chennai Waste</span>
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600">Swap Network</span>
+                <span className="font-black text-xl tracking-tight leading-none text-stone-900">Waste Swap</span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600">Network</span>
               </div>
             </Link>
 
@@ -175,7 +175,7 @@ export default function Layout({ children, user }: { children: React.ReactNode, 
           <div className="flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="flex items-center gap-3">
               <Recycle className="w-6 h-6 text-emerald-600" />
-              <span className="font-black text-lg tracking-tight">Chennai Waste Swap</span>
+              <span className="font-black text-lg tracking-tight">Waste Swap Network</span>
             </div>
             <div className="flex gap-8 text-sm font-bold text-stone-400">
               <a href="#" className="hover:text-emerald-600 transition-colors">Privacy</a>
@@ -183,7 +183,7 @@ export default function Layout({ children, user }: { children: React.ReactNode, 
               <a href="#" className="hover:text-emerald-600 transition-colors">Contact</a>
             </div>
             <div className="text-stone-400 text-sm font-medium">
-              © 2026 Chennai Waste Swap Network. Built with Advanced AI.
+              © 2026 Waste Swap Network. Built with Advanced AI.
             </div>
           </div>
         </div>

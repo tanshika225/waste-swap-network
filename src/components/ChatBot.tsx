@@ -24,7 +24,7 @@ export default function ChatBot() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: "Hello! I'm your Chennai Waste Swap Assistant. How can I help you today? You can ask me about waste segregation, swap advice, or how to use the platform. I also speak Tamil!" }
+    { role: 'model', text: "Hello! I'm your Waste Swap Assistant. How can I help you today? You can ask me about waste segregation, swap advice, or how to use the platform. I also speak Tamil!" }
   ]);
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -115,7 +115,7 @@ export default function ChatBot() {
       const chat = ai.chats.create({
         model: "gemini-3-flash-preview",
         config: {
-          systemInstruction: "You are the official AI Assistant for the Chennai Waste Swap Network. Your goal is to help users manage waste, understand segregation (biodegradable vs non-biodegradable), provide advice on swapping items, and explain how the platform works. You are bilingual and can communicate fluently in both English and Tamil. Be professional, helpful, and culturally aware of Chennai's waste management context. Keep responses concise and use markdown for formatting.",
+          systemInstruction: "You are the official AI Assistant for the Waste Swap Network. Your goal is to help users manage waste, understand segregation (biodegradable vs non-biodegradable), provide advice on swapping items, and explain how the platform works. You are bilingual and can communicate fluently in both English and Tamil. Be professional, helpful, and culturally aware of Chennai's waste management context. Keep responses concise and use markdown for formatting.",
         },
         history: messages.map(m => ({
           role: m.role,

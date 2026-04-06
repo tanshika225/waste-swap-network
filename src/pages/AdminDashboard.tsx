@@ -118,7 +118,7 @@ export default function AdminDashboard() {
             <ShieldCheck className="w-10 h-10 text-emerald-600" />
             Admin Control Panel
           </h1>
-          <p className="text-stone-500 font-medium mt-1">Manage the Chennai Waste Swap Network ecosystem</p>
+          <p className="text-stone-500 font-medium mt-1">Manage the Waste Swap Network ecosystem</p>
         </div>
         
         <div className="flex bg-stone-100 p-1 rounded-2xl">

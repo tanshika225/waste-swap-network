@@ -13,7 +13,7 @@ import {
   Loader2,
   TrendingUp,
   ArrowRight,
-  BarChart3
+  BarChart3  
 } from 'lucide-react';
 import { motion } from 'motion/react';
 

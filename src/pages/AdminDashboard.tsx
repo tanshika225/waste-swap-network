@@ -172,8 +172,8 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-stone-900 text-white p-10 rounded-[3rem] relative overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-stone-900 text-white p-10 rounded-[3rem] relative overflow-hidden">
           <div className="relative z-10">
             <h2 className="text-3xl font-black mb-4">System Health</h2>
             <p className="text-stone-400 max-w-sm mb-8">The Waste Swap Network is operating normally. All services are online and responding within expected latency.</p>
@@ -193,11 +193,43 @@ export default function AdminDashboard() {
 
         <div className="bg-white p-10 rounded-[3rem] border border-stone-200 shadow-sm">
           <h2 className="text-2xl font-black text-stone-900 mb-6 flex items-center gap-3">
+            <ShieldCheck className="w-6 h-6 text-emerald-600" />
+            Quick Actions
+          </h2>
+          <div className="grid grid-cols-1 gap-3">
+            <button 
+              onClick={() => navigate('/admin/users')}
+              className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl hover:bg-emerald-50 hover:text-emerald-600 transition-all group"
+            >
+              <span className="font-bold">Manage Users</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+            <button 
+              onClick={() => navigate('/admin/waste')}
+              className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl hover:bg-emerald-50 hover:text-emerald-600 transition-all group"
+            >
+              <span className="font-bold">Review Waste</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+            <button 
+              onClick={() => navigate('/admin/analytics')}
+              className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl hover:bg-emerald-50 hover:text-emerald-600 transition-all group"
+            >
+              <span className="font-bold">View Analytics</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <div className="bg-white p-10 rounded-[3rem] border border-stone-200 shadow-sm">
+          <h2 className="text-2xl font-black text-stone-900 mb-6 flex items-center gap-3">
             <TrendingUp className="w-6 h-6 text-emerald-600" />
             Recent Activity
           </h2>
-          <div className="space-y-6">
-            {data.swaps.slice(0, 4).map((swap: any) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {data.swaps.slice(0, 6).map((swap: any) => (
               <div key={swap.id} className="flex items-center justify-between p-4 bg-stone-50 rounded-2xl">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">

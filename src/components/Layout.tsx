@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { LogOut, Recycle, User, PlusCircle, LayoutDashboard, MapPin, Menu, X, LogIn, Sparkles, Lock } from 'lucide-react';
@@ -8,8 +8,12 @@ import ChatBot from './ChatBot';
 
 export default function Layout({ children, user, hideHeaderFooter }: { children: React.ReactNode, user: any, hideHeaderFooter?: boolean }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  const isPathAdmin = location.pathname.startsWith('/admin');
+  const shouldHide = hideHeaderFooter || isPathAdmin;
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -42,7 +46,6 @@ export default function Layout({ children, user, hideHeaderFooter }: { children:
       { to: '/upload', label: 'List Waste', icon: PlusCircle },
       { to: '/dashboard', label: 'My Dashboard', icon: LayoutDashboard },
       { to: '/profile', label: 'My Profile', icon: User },
-      ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: Lock }] : []),
     ] : []),
   ];
 
@@ -54,7 +57,7 @@ export default function Layout({ children, user, hideHeaderFooter }: { children:
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/30 rounded-full blur-[120px]"></div>
       </div>
 
-      {!hideHeaderFooter && (
+      {!shouldHide && (
         <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-white/20 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-20 items-center">
@@ -165,14 +168,14 @@ export default function Layout({ children, user, hideHeaderFooter }: { children:
         </nav>
       )}
 
-      <main className={`relative z-10 flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 w-full ${hideHeaderFooter ? 'flex items-center justify-center' : ''}`}>
+      <main className={`relative z-10 flex-grow ${shouldHide ? (isPathAdmin ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 w-full flex items-center justify-center') : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 w-full'}`}>
         {children}
       </main>
 
-      {!hideHeaderFooter && <ChatBot />}
+      {!shouldHide && <ChatBot />}
 
       {/* Footer */}
-      {!hideHeaderFooter && (
+      {!shouldHide && (
         <footer className="relative z-10 border-t border-stone-200 bg-white py-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-8">

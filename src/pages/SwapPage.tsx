@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { Search, Grid, Navigation, Filter, X, ChevronDown } from 'lucide-react';
 import { getCurrentLocation, Location } from '../lib/location';
-import axios from 'axios';
 
 const CATEGORIES = ["plastic", "paper", "metal", "glass", "organic", "other"];
 
@@ -24,31 +23,46 @@ export default function SwapPage() {
   const [radius, setRadius] = useState('5');
   const [useRadiusFilter, setUseRadiusFilter] = useState(false);
 
-  const fetchItems = useCallback(async () => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const params: any = {};
-      if (wasteType) params.wasteType = wasteType;
-      if (minPrice) params.minPrice = minPrice;
-      if (maxPrice) params.maxPrice = maxPrice;
+    const q = query(
+      collection(db, 'wasteItems'),
+      where('status', '==', 'available')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let fetchedItems = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      // Client-side filtering for complex filters
+      if (wasteType) {
+        fetchedItems = fetchedItems.filter(item => item.category === wasteType);
+      }
+      if (minPrice) {
+        fetchedItems = fetchedItems.filter(item => item.estimatedValue >= Number(minPrice));
+      }
+      if (maxPrice) {
+        fetchedItems = fetchedItems.filter(item => item.estimatedValue <= Number(maxPrice));
+      }
       if (useRadiusFilter && userLocation) {
-        params.lat = userLocation.lat;
-        params.lng = userLocation.lng;
-        params.radius = radius;
+        fetchedItems = fetchedItems.filter(item => {
+          if (!item.location) return false;
+          const dist = calculateDistance(userLocation, item.location);
+          return dist <= Number(radius);
+        });
       }
 
-      const response = await axios.get('/api/waste-items', { params });
-      setItems(response.data);
-    } catch (err) {
-      console.error('Failed to fetch items:', err);
-    } finally {
+      setItems(fetchedItems);
       setLoading(false);
-    }
-  }, [wasteType, minPrice, maxPrice, useRadiusFilter, userLocation, radius]);
+    }, (error) => {
+      console.error('Failed to fetch items:', error);
+      setLoading(false);
+    });
 
-  useEffect(() => {
-    fetchItems();
-  }, [fetchItems]);
+    return () => unsubscribe();
+  }, [wasteType, minPrice, maxPrice, useRadiusFilter, userLocation, radius]);
 
   useEffect(() => {
     const fetchLocation = async () => {
@@ -70,6 +84,20 @@ export default function SwapPage() {
     };
     fetchLocation();
   }, []);
+
+  const calculateDistance = (loc1: Location, loc2: { lat: number; lng: number }): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (loc2.lat - loc1.lat) * (Math.PI / 180);
+    const dLng = (loc2.lng - loc1.lng) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(loc1.lat * (Math.PI / 180)) *
+        Math.cos(loc2.lat * (Math.PI / 180)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
 
   const handleSwapRequest = (itemId: string) => {
     if (!auth.currentUser) return alert('Please login to request a swap');

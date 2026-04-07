@@ -30,6 +30,14 @@ export default function WasteCard({ item, onSwap }: { item: any; onSwap?: (id: s
           className="w-full h-48 object-cover"
           referrerPolicy="no-referrer"
         />
+        <div className="absolute top-3 left-3 flex flex-col gap-2">
+          {item.ownerName && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/90 text-stone-900 shadow-sm backdrop-blur-sm flex items-center gap-1">
+              <User className="w-2 h-2" />
+              {item.ownerName}
+            </span>
+          )}
+        </div>
         <div className="absolute top-3 right-3 flex flex-col gap-2">
           <span className={`text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider shadow-sm ${
             item.category === 'plastic' ? 'bg-blue-500 text-white' :

@@ -135,7 +135,10 @@ export default function ManageWaste() {
               <h3 className="font-black text-stone-900 mb-1 truncate">{item.title}</h3>
               <p className="text-stone-500 text-sm line-clamp-2 mb-4">{item.description}</p>
               <div className="flex items-center justify-between pt-4 border-t border-stone-100">
-                <div className="text-xs font-bold text-stone-400">Value: ₹{item.estimatedValue}</div>
+                <div className="flex flex-col">
+                  <div className="text-xs font-bold text-stone-400">Value: ₹{item.estimatedValue}</div>
+                  {item.ownerName && <div className="text-[10px] text-stone-400">Owner: {item.ownerName}</div>}
+                </div>
                 <div className={`text-[10px] font-black uppercase tracking-wider ${
                   item.status === 'available' ? 'text-emerald-600' : 'text-amber-600'
                 }`}>

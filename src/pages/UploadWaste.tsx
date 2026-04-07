@@ -70,6 +70,7 @@ export default function UploadWaste() {
     try {
       await addDoc(collection(db, 'wasteItems'), {
         ownerId: auth.currentUser.uid,
+        ownerName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Anonymous',
         title,
         description,
         category,

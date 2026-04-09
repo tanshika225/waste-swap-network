@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import axios from 'axios';
+import { doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import WasteCard from '../components/WasteCard';
-import { Search, Grid, Navigation, Filter, X, ChevronDown } from 'lucide-react';
+import { Search, Navigation, Filter, X, ChevronDown } from 'lucide-react';
 import { getCurrentLocation, Location } from '../lib/location';
 
 const CATEGORIES = ["plastic", "paper", "metal", "glass", "organic", "other"];
@@ -24,44 +25,28 @@ export default function SwapPage() {
   const [useRadiusFilter, setUseRadiusFilter] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    const q = query(
-      collection(db, 'wasteItems'),
-      where('status', '==', 'available')
-    );
+    const fetchItems = async () => {
+      setLoading(true);
+      try {
+        const params: any = {};
+        if (wasteType) params.wasteType = wasteType;
+        if (minPrice) params.minPrice = minPrice;
+        if (maxPrice) params.maxPrice = maxPrice;
+        if (useRadiusFilter && userLocation) {
+          params.lat = userLocation.lat;
+          params.lng = userLocation.lng;
+          params.radius = radius;
+        }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let fetchedItems = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any[];
-
-      // Client-side filtering for complex filters
-      if (wasteType) {
-        fetchedItems = fetchedItems.filter(item => item.category === wasteType);
+        const response = await axios.get('/api/waste-items', { params });
+        setItems(response.data);
+      } catch (error) {
+        console.error('Failed to fetch items:', error);
+      } finally {
+        setLoading(false);
       }
-      if (minPrice) {
-        fetchedItems = fetchedItems.filter(item => item.estimatedValue >= Number(minPrice));
-      }
-      if (maxPrice) {
-        fetchedItems = fetchedItems.filter(item => item.estimatedValue <= Number(maxPrice));
-      }
-      if (useRadiusFilter && userLocation) {
-        fetchedItems = fetchedItems.filter(item => {
-          if (!item.location) return false;
-          const dist = calculateDistance(userLocation, item.location);
-          return dist <= Number(radius);
-        });
-      }
-
-      setItems(fetchedItems);
-      setLoading(false);
-    }, (error) => {
-      console.error('Failed to fetch items:', error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    };
+    fetchItems();
   }, [wasteType, minPrice, maxPrice, useRadiusFilter, userLocation, radius]);
 
   useEffect(() => {

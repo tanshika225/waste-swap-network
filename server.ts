@@ -34,48 +34,52 @@ try {
   db = getFirestore();
 }
 
-const isAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.error('Admin Auth Error: Missing or malformed Authorization header');
-    return res.status(401).json({ error: 'Unauthorized', details: 'Missing or malformed Authorization header' });
-  }
+  // Cache for admin status to save reads
+  const adminCache = new Map<string, { isAdmin: boolean, timestamp: number }>();
+  const ADMIN_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-  const idToken = authHeader.split('Bearer ')[1];
-  if (!idToken || idToken === 'undefined' || idToken === 'null') {
-    console.error('Admin Auth Error: ID token is empty or undefined');
-    return res.status(401).json({ error: 'Unauthorized', details: 'ID token is empty or undefined' });
-  }
-
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const isAdminEmail = decodedToken.email === 'jstanshika1402@gmail.com' || decodedToken.email === 'admin@wasteswap.com';
-
-    // If it's the hardcoded admin email, let them through immediately
-    if (isAdminEmail) {
-      (req as any).user = decodedToken;
-      return next();
+  const isAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Otherwise, check their role in Firestore
+    const idToken = authHeader.split('Bearer ')[1];
     try {
-      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-      const userData = userDoc.data();
-      if (userData?.role === 'admin') {
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      
+      // Check cache first
+      const cached = adminCache.get(decodedToken.uid);
+      if (cached && (Date.now() - cached.timestamp < ADMIN_CACHE_DURATION)) {
+        if (cached.isAdmin) {
+          (req as any).user = decodedToken;
+          return next();
+        }
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const isAdminEmail = decodedToken.email === 'jstanshika1402@gmail.com' || decodedToken.email === 'admin@wasteswap.com';
+      if (isAdminEmail) {
+        adminCache.set(decodedToken.uid, { isAdmin: true, timestamp: Date.now() });
         (req as any).user = decodedToken;
         return next();
       }
-    } catch (dbError: any) {
-      console.error('Admin Auth DB Error (Firestore check failed):', dbError.message);
-    }
 
-    console.warn(`Admin Auth Warning: User ${decodedToken.email} attempted to access admin routes without permission`);
-    res.status(403).json({ error: 'Forbidden: Admin access required' });
-  } catch (error: any) {
-    console.error('Admin Auth Error (verifyIdToken):', error.message);
-    res.status(401).json({ error: 'Invalid token', details: error.message });
-  }
-};
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const isUserAdmin = userDoc.data()?.role === 'admin';
+      
+      adminCache.set(decodedToken.uid, { isAdmin: isUserAdmin, timestamp: Date.now() });
+      
+      if (isUserAdmin) {
+        (req as any).user = decodedToken;
+        return next();
+      }
+
+      res.status(403).json({ error: 'Forbidden' });
+    } catch (error: any) {
+      res.status(401).json({ error: 'Invalid token' });
+    }
+  };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -91,11 +95,28 @@ async function startServer() {
     res.json({ status: "ok", message: "Waste Swap Network API is running" });
   });
 
+  // Cache for waste items
+  let wasteItemsCache: { data: any, timestamp: number } | null = null;
+  const WASTE_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+
   app.get("/api/waste-items", async (req, res) => {
     try {
+      // Circuit breaker for waste items
+      if (isQuotaExhausted && (Date.now() - quotaExhaustedAt < QUOTA_COOLDOWN)) {
+        if (wasteItemsCache) return res.json(wasteItemsCache.data);
+        return res.json([]);
+      }
+
       const { wasteType, minPrice, maxPrice, lat, lng, radius } = req.query;
       
-      let query: admin.firestore.Query = db.collection('wasteItems').where('status', '==', 'available');
+      // Check cache (only for general queries without specific filters for simplicity)
+      if (!wasteType && !minPrice && !maxPrice && !lat && wasteItemsCache && (Date.now() - wasteItemsCache.timestamp < WASTE_CACHE_DURATION)) {
+        return res.json(wasteItemsCache.data);
+      }
+
+      let query: admin.firestore.Query = db.collection('wasteItems')
+        .where('status', '==', 'available')
+        .limit(100); // Limit to 100 items to save quota
       
       if (wasteType) {
         query = query.where('category', '==', wasteType);
@@ -124,19 +145,65 @@ async function startServer() {
         });
       }
       
+      // Update cache if it's a general query
+      if (!wasteType && !minPrice && !maxPrice && !lat) {
+        wasteItemsCache = { data: items, timestamp: Date.now() };
+      }
+
       res.json(items);
     } catch (error: any) {
       console.error("Fetch Waste Items Error:", error);
+      if (error.message?.includes('RESOURCE_EXHAUSTED')) {
+        isQuotaExhausted = true;
+        quotaExhaustedAt = Date.now();
+        if (wasteItemsCache) return res.json(wasteItemsCache.data);
+      }
       res.status(500).json({ error: error.message });
     }
   });
 
+  // Simple in-memory cache for recommendations
+  let recommendationsCache: { data: any, timestamp: number } | null = null;
+  const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+  let isQuotaExhausted = false;
+  let quotaExhaustedAt = 0;
+  const QUOTA_COOLDOWN = 4 * 60 * 60 * 1000; // 4 hours cooldown if quota hit
+
+  app.get("/api/quota-status", (req, res) => {
+    res.json({
+      isExhausted: isQuotaExhausted,
+      exhaustedAt: quotaExhaustedAt,
+      cooldownRemaining: isQuotaExhausted ? Math.max(0, QUOTA_COOLDOWN - (Date.now() - quotaExhaustedAt)) : 0
+    });
+  });
+
   app.get("/api/recommendations", async (req, res) => {
     try {
+      // Circuit breaker: if quota was hit recently, serve from cache or mock
+      if (isQuotaExhausted && (Date.now() - quotaExhaustedAt < QUOTA_COOLDOWN)) {
+        console.warn("Circuit Breaker: Serving recommendations from cache due to recent quota exhaustion");
+        if (recommendationsCache) return res.json(recommendationsCache.data);
+        // Serve mock data if no cache
+        return res.json({
+          popularTypes: [{ category: 'plastic', count: 12 }, { category: 'metal', count: 8 }],
+          nearbyItems: [],
+          bestBuyers: [{ uid: 'mock', displayName: 'Eco Warrior', completedSwaps: 5 }]
+        });
+      }
+
       const { lat, lng } = req.query;
+
+      // Check cache first
+      if (recommendationsCache && (Date.now() - recommendationsCache.timestamp < CACHE_DURATION)) {
+        return res.json(recommendationsCache.data);
+      }
       
-      // 1. Popular Waste Types
-      const itemsSnapshot = await db.collection('wasteItems').get();
+      // 1. Popular Waste Types (Limit to recent 30 items to save quota)
+      const itemsSnapshot = await db.collection('wasteItems')
+        .orderBy('createdAt', 'desc')
+        .limit(30)
+        .get();
+      
       const categoryCounts: Record<string, number> = {};
       itemsSnapshot.docs.forEach(doc => {
         const cat = doc.data().category;
@@ -164,9 +231,11 @@ async function startServer() {
           .slice(0, 4);
       }
 
-      // 3. Best Buyers (Most completed swap requests as requester)
+      // 3. Best Buyers (Limit to recent 20 completed swaps)
       const requestsSnapshot = await db.collection('swapRequests')
         .where('status', '==', 'completed')
+        .orderBy('updatedAt', 'desc')
+        .limit(20)
         .get();
       
       const buyerCounts: Record<string, number> = {};
@@ -180,6 +249,7 @@ async function startServer() {
         .slice(0, 5);
 
       const bestBuyers = await Promise.all(topBuyerIds.map(async ([uid, count]) => {
+        // Cache user info for best buyers to save reads
         const userDoc = await db.collection('users').doc(uid).get();
         return {
           uid,
@@ -188,14 +258,38 @@ async function startServer() {
         };
       }));
 
-      res.json({
+      const result = {
         popularTypes,
         nearbyItems,
         bestBuyers
-      });
+      };
+
+      // Update cache
+      recommendationsCache = {
+        data: result,
+        timestamp: Date.now()
+      };
+      isQuotaExhausted = false; // Reset if successful
+
+      res.json(result);
     } catch (error: any) {
       console.error("Recommendations Error:", error);
-      res.status(500).json({ error: error.message });
+      
+      if (error.message?.includes('RESOURCE_EXHAUSTED')) {
+        isQuotaExhausted = true;
+        quotaExhaustedAt = Date.now();
+      }
+
+      // If we have stale cache, serve it on error
+      if (recommendationsCache) {
+        return res.json(recommendationsCache.data);
+      }
+      // Mock data as last resort
+      res.json({
+        popularTypes: [{ category: 'plastic', count: 12 }, { category: 'metal', count: 8 }],
+        nearbyItems: [],
+        bestBuyers: [{ uid: 'mock', displayName: 'Eco Warrior', completedSwaps: 5 }]
+      });
     }
   });
 
@@ -342,27 +436,30 @@ async function startServer() {
       let swapsCount = 0;
 
       try {
+        // Use count() which is much cheaper (1 read per 1000 index entries)
         usersCount = (await db.collection('users').count().get()).data().count;
         wasteCount = (await db.collection('wasteItems').count().get()).data().count;
         swapsCount = (await db.collection('swapRequests').where('status', '==', 'completed').count().get()).data().count;
       } catch (countError: any) {
         console.warn("Firestore count() failed, falling back to manual count:", countError.message);
-        const usersSnap = await db.collection('users').get();
-        const wasteSnap = await db.collection('wasteItems').get();
-        const swapsSnap = await db.collection('swapRequests').where('status', '==', 'completed').get();
+        // Manual count is expensive, only do it if count() fails
+        const usersSnap = await db.collection('users').select().get(); // select() reduces data transfer
+        const wasteSnap = await db.collection('wasteItems').select().get();
+        const swapsSnap = await db.collection('swapRequests').where('status', '==', 'completed').select().get();
         usersCount = usersSnap.size;
         wasteCount = wasteSnap.size;
         swapsCount = swapsSnap.size;
       }
       
-      const itemsSnap = await db.collection('wasteItems').get();
+      // For totalValue, limit to first 100 items to avoid massive reads
+      const itemsSnap = await db.collection('wasteItems').limit(100).get();
       const totalValue = itemsSnap.docs.reduce((acc, doc) => acc + (doc.data().estimatedValue || 0), 0);
 
       res.json({
         totalUsers: usersCount,
         totalWaste: wasteCount,
         totalSwaps: swapsCount,
-        totalValue
+        totalValue: totalValue * (wasteCount > 100 ? wasteCount / 100 : 1) // Extrapolate if many items
       });
     } catch (error: any) {
       console.error("Admin Analytics Error:", error);

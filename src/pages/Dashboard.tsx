@@ -17,25 +17,38 @@ export default function Dashboard() {
   const [pendingItemsIds, setPendingItemsIds] = useState<Set<string>>(new Set());
   const [recommendations, setRecommendations] = useState<any>(null);
   const [loadingRecs, setLoadingRecs] = useState(false);
+  const [quotaInfo, setQuotaInfo] = useState<any>(null);
 
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // Fetch user profile
-    const fetchProfile = async () => {
-      const docSnap = await getDoc(doc(db, 'users', user.uid));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setUserProfile(data);
-        
-        // Fetch recommendations after profile (for location)
-        fetchRecommendations(data.location);
+    const checkQuota = async () => {
+      try {
+        const res = await axios.get('/api/quota-status');
+        setQuotaInfo(res.data);
+      } catch (e) {
+        console.error('Failed to check quota status');
       }
     };
-    fetchProfile();
+    checkQuota();
 
+    // Fetch recommendations after profile (for location)
     const fetchRecommendations = async (location?: any) => {
+      const cacheKey = `recs_${user.uid}`;
+      const cached = localStorage.getItem(cacheKey);
+      
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        // Use cache if it's less than 15 minutes old
+        if (Date.now() - timestamp < 15 * 60 * 1000) {
+          setRecommendations(data);
+          return;
+        }
+        // If older, still show it while loading
+        setRecommendations(data);
+      }
+
       setLoadingRecs(true);
       try {
         const params: any = {};
@@ -45,12 +58,32 @@ export default function Dashboard() {
         }
         const response = await axios.get('/api/recommendations', { params });
         setRecommendations(response.data);
-      } catch (err) {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          data: response.data,
+          timestamp: Date.now()
+        }));
+      } catch (err: any) {
         console.error('Failed to fetch recommendations:', err);
+        if (err.response?.status === 500 || err.message?.includes('Quota')) {
+          toast.error('Recommendations temporarily limited due to high traffic.', {
+            description: 'Showing previously cached data if available.'
+          });
+        }
       } finally {
         setLoadingRecs(false);
       }
     };
+    
+    // Fetch user profile
+    const fetchProfile = async () => {
+      const docSnap = await getDoc(doc(db, 'users', user.uid));
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUserProfile(data);
+        fetchRecommendations(data.location);
+      }
+    };
+    fetchProfile();
 
     // Fetch my items
     const qItems = query(
@@ -62,6 +95,9 @@ export default function Dashboard() {
       setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
       console.error('My Items Snapshot Error:', error);
+      if (error.message?.includes('quota')) {
+        setQuotaInfo(prev => ({ ...prev, isExhausted: true }));
+      }
       // Fallback: if index is missing, fetch without order and sort client-side
       if (error.message?.includes('index')) {
         const qFallback = query(collection(db, 'wasteItems'), where('ownerId', '==', user.uid));
@@ -90,6 +126,9 @@ export default function Dashboard() {
       setMyRequests(docs);
     }, (error) => {
       console.error('My Requests Snapshot Error:', error);
+      if (error.message?.includes('quota')) {
+        setQuotaInfo(prev => ({ ...prev, isExhausted: true }));
+      }
     });
 
     // Fetch received requests
@@ -114,6 +153,9 @@ export default function Dashboard() {
       setPendingItemsIds(pendingIds);
     }, (error) => {
       console.error('Received Requests Snapshot Error:', error);
+      if (error.message?.includes('quota')) {
+        setQuotaInfo(prev => ({ ...prev, isExhausted: true }));
+      }
     });
 
     return () => {
@@ -206,6 +248,20 @@ export default function Dashboard() {
         <h1 className="text-4xl font-bold text-stone-900">Dashboard</h1>
         <p className="text-stone-500">Welcome back, {userProfile.displayName}</p>
       </header>
+
+      {quotaInfo?.isExhausted && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-4 text-amber-800">
+          <Zap className="w-6 h-6 text-amber-500 animate-pulse" />
+          <div className="flex-1">
+            <p className="font-bold text-sm">Daily Database Limit Reached</p>
+            <p className="text-xs opacity-80">The app is currently in "Circular Mode" to save energy. Some real-time updates may be delayed until the daily quota resets.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase font-black opacity-40">Resets in</p>
+            <p className="font-mono text-xs font-bold">{Math.ceil(quotaInfo.cooldownRemaining / 60000)}m</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">

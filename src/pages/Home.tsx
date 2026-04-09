@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import axios from 'axios';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
 import { Recycle, ArrowRight, ShieldCheck, Globe, Sparkles, Zap, MessageSquare, Scale, Leaf } from 'lucide-react';
@@ -10,13 +9,16 @@ export default function Home() {
   const [recentItems, setRecentItems] = useState<any[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'wasteItems'), where('status', '==', 'available'), limit(4));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setRecentItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'wasteItems');
-    });
-    return () => unsubscribe();
+    const fetchRecentItems = async () => {
+      try {
+        const response = await axios.get('/api/waste-items');
+        // Take only the first 4 available items
+        setRecentItems(response.data.slice(0, 4));
+      } catch (error) {
+        console.error('Failed to fetch recent items:', error);
+      }
+    };
+    fetchRecentItems();
   }, []);
 
   return (

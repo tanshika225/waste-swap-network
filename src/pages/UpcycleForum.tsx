@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, arrayRemove, increment, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, arrayRemove, increment, getDocs, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, MessageSquare, Share2, Plus, X, Image as ImageIcon, Video, Loader2, Send, Trash2 } from 'lucide-react';
@@ -161,7 +161,7 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
   }, [showCreateModal, activeCommentsPostId, onModalToggle]);
 
   useEffect(() => {
-    const q = query(collection(db, 'upcyclePosts'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'upcyclePosts'), orderBy('createdAt', 'desc'), limit(20));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({
         id: doc.id,

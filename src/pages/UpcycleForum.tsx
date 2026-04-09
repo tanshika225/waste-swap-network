@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, arrayRemove, increment, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, MessageSquare, Share2, Plus, X, Image as ImageIcon, Video, Loader2, Send, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+
+interface UpcycleComment {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: any;
+}
 
 interface UpcyclePost {
   id: string;
@@ -16,22 +24,141 @@ interface UpcyclePost {
   videoUrl?: string;
   likes: number;
   likedBy: string[];
+  commentsCount: number;
   createdAt: any;
+}
+
+function CommentSection({ postId, onClose }: { postId: string; onClose: () => void }) {
+  const [comments, setComments] = useState<UpcycleComment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'upcyclePosts', postId, 'comments'), orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const commentsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as UpcycleComment[];
+      setComments(commentsData);
+      setLoading(false);
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+      }, 100);
+    });
+    return () => unsubscribe();
+  }, [postId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser || !newComment.trim()) return;
+    setSubmitting(true);
+
+    try {
+      await addDoc(collection(db, 'upcyclePosts', postId, 'comments'), {
+        userId: auth.currentUser.uid,
+        userName: auth.currentUser.displayName || 'Anonymous',
+        text: newComment.trim(),
+        createdAt: serverTimestamp()
+      });
+      await updateDoc(doc(db, 'upcyclePosts', postId), {
+        commentsCount: increment(1)
+      });
+      setNewComment('');
+    } catch (error) {
+      console.error("Error adding comment:", error);
+      toast.error('Failed to add comment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+    >
+      <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[80vh]">
+        <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
+          <h3 className="font-black text-stone-900 flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-emerald-600" />
+            Comments
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-stone-200 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="text-center py-10">
+              <p className="text-stone-400 font-medium italic">No comments yet. Be the first to share your thoughts!</p>
+            </div>
+          ) : (
+            comments.map((comment) => (
+              <div key={comment.id} className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-600 font-bold text-xs shrink-0">
+                  {comment.userName[0]}
+                </div>
+                <div className="bg-stone-50 p-4 rounded-2xl flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-stone-900 text-sm">{comment.userName}</span>
+                    <span className="text-[10px] text-stone-400 font-medium">
+                      {comment.createdAt?.seconds ? formatDistanceToNow(comment.createdAt.seconds * 1000) + ' ago' : 'Just now'}
+                    </span>
+                  </div>
+                  <p className="text-stone-600 text-sm leading-relaxed">{comment.text}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 border-t border-stone-100 bg-stone-50">
+          <div className="relative">
+            <input
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Write a comment..."
+              className="w-full pl-6 pr-14 py-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium"
+            />
+            <button
+              type="submit"
+              disabled={submitting || !newComment.trim()}
+              className="absolute right-2 top-2 bottom-2 px-4 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          </div>
+        </form>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show: boolean) => void }) {
   const [posts, setPosts] = useState<UpcyclePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
   const [newPost, setNewPost] = useState({ title: '', description: '', imageUrl: '', videoUrl: '' });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (onModalToggle) {
-      onModalToggle(showCreateModal);
+      onModalToggle(showCreateModal || !!activeCommentsPostId);
     }
-  }, [showCreateModal, onModalToggle]);
+  }, [showCreateModal, activeCommentsPostId, onModalToggle]);
 
   useEffect(() => {
     const q = query(collection(db, 'upcyclePosts'), orderBy('createdAt', 'desc'));
@@ -65,6 +192,20 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
     }
   };
 
+  const handleShare = (post: UpcyclePost) => {
+    const shareUrl = `${window.location.origin}/upcycle?post=${post.id}`;
+    if (navigator.share) {
+      navigator.share({
+        title: post.title,
+        text: post.description,
+        url: shareUrl,
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(shareUrl);
+      toast.success('Link copied to clipboard! 🔗');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -91,6 +232,7 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
         videoUrl: newPost.videoUrl,
         likes: 0,
         likedBy: [],
+        commentsCount: 0,
         createdAt: serverTimestamp()
       });
       setShowCreateModal(false);
@@ -182,12 +324,18 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
                         <Heart className={`w-5 h-5 ${post.likedBy.includes(auth.currentUser?.uid || '') ? 'fill-current' : ''}`} />
                         <span className="text-sm font-bold">{post.likes}</span>
                       </button>
-                      <button className="flex items-center gap-1.5 text-stone-400 hover:text-emerald-600 transition-colors">
+                      <button 
+                        onClick={() => setActiveCommentsPostId(post.id)}
+                        className="flex items-center gap-1.5 text-stone-400 hover:text-emerald-600 transition-colors"
+                      >
                         <MessageSquare className="w-5 h-5" />
-                        <span className="text-sm font-bold">0</span>
+                        <span className="text-sm font-bold">{post.commentsCount || 0}</span>
                       </button>
                     </div>
-                    <button className="text-stone-400 hover:text-stone-600 transition-colors">
+                    <button 
+                      onClick={() => handleShare(post)}
+                      className="text-stone-400 hover:text-stone-600 transition-colors"
+                    >
                       <Share2 className="w-5 h-5" />
                     </button>
                   </div>
@@ -197,6 +345,16 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
           </div>
         )
       )}
+
+      {/* Comment Section Modal */}
+      <AnimatePresence>
+        {activeCommentsPostId && (
+          <CommentSection 
+            postId={activeCommentsPostId} 
+            onClose={() => setActiveCommentsPostId(null)} 
+          />
+        )}
+      </AnimatePresence>
 
       {/* Create Modal */}
       <AnimatePresence>
@@ -278,3 +436,4 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
     </div>
   );
 }
+

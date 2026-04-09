@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [myItems, setMyItems] = useState<any[]>([]);
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [receivedRequests, setReceivedRequests] = useState<any[]>([]);
+  const [pendingItemsIds, setPendingItemsIds] = useState<Set<string>>(new Set());
   const [recommendations, setRecommendations] = useState<any>(null);
   const [loadingRecs, setLoadingRecs] = useState(false);
 
@@ -77,7 +78,7 @@ export default function Dashboard() {
     // Fetch received requests
     const qRecv = query(collection(db, 'swapRequests'), where('ownerId', '==', user.uid));
     const unsubRecv = onSnapshot(qRecv, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       // Sort client-side: older top, recent down (ascending)
       docs.sort((a: any, b: any) => {
         const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
@@ -85,6 +86,15 @@ export default function Dashboard() {
         return timeA - timeB;
       });
       setReceivedRequests(docs);
+      
+      // Track items with pending requests
+      const pendingIds = new Set<string>();
+      docs.forEach(req => {
+        if (req.status === 'pending') {
+          pendingIds.add(req.itemId);
+        }
+      });
+      setPendingItemsIds(pendingIds);
     }, (error) => {
       console.error('Received Requests Snapshot Error:', error);
     });
@@ -273,8 +283,14 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-2 gap-8 md:gap-10">
         {/* Received Requests */}
         <section className="lg:col-span-2">
-          <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-emerald-600" /> Requests Received
+          <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3">
+            <TrendingUp className="w-6 h-6 text-emerald-600" /> 
+            Requests Received
+            {pendingItemsIds.size > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-1 rounded-full animate-pulse">
+                {pendingItemsIds.size} NEW
+              </span>
+            )}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {receivedRequests.map(req => (
@@ -352,9 +368,19 @@ export default function Dashboard() {
             <Package className="w-6 h-6 text-emerald-600" /> My Items
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {myItems.map(item => (
-              <WasteCard key={item.id} item={item} />
-            ))}
+            {myItems.map(item => {
+              const hasPending = pendingItemsIds.has(item.id);
+              const relatedRequest = receivedRequests.find(r => r.itemId === item.id && r.status === 'pending');
+              
+              return (
+                <WasteCard 
+                  key={item.id} 
+                  item={item} 
+                  hasPendingRequest={hasPending}
+                  onRequestClick={() => relatedRequest && navigate(`/chat/${relatedRequest.id}`)}
+                />
+              );
+            })}
             {myItems.length === 0 && (
               <div className="col-span-full p-8 md:p-12 text-center text-stone-400 border-2 border-dashed rounded-3xl text-sm md:text-base">
                 You haven't uploaded any items yet.

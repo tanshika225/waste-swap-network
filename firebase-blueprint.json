@@ -102,9 +102,22 @@
         "wasteItemId": { "type": "string", "description": "Original waste item ID (optional)" },
         "likes": { "type": "number", "description": "Number of likes" },
         "likedBy": { "type": "array", "items": { "type": "string" }, "description": "List of UIDs who liked the post" },
+        "commentsCount": { "type": "number", "description": "Number of comments" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "userName", "title", "description", "imageUrl", "createdAt"]
+    },
+    "UpcycleComment": {
+      "title": "UpcycleComment",
+      "description": "A comment on an upcycling project post.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the commenter" },
+        "userName": { "type": "string", "description": "Display name of the commenter" },
+        "text": { "type": "string", "description": "Comment content" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -127,6 +140,10 @@
     "/upcyclePosts/{postId}": {
       "schema": "UpcyclePost",
       "description": "Community upcycling DIY posts"
+    },
+    "/upcyclePosts/{postId}/comments/{commentId}": {
+      "schema": "UpcycleComment",
+      "description": "Comments on upcycling posts"
     }
   }
 }

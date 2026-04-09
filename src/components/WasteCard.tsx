@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Tag, User, Leaf, Scale } from 'lucide-react';
+import { MapPin, Tag, User, Leaf, Scale, MessageSquare } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface WasteItem {
@@ -16,13 +16,18 @@ interface WasteItem {
   location?: { lat: number; lng: number };
 }
 
-export default function WasteCard({ item, onSwap }: { item: any; onSwap?: (id: string) => void; key?: any }) {
+export default function WasteCard({ item, onSwap, hasPendingRequest, onRequestClick }: { item: any; onSwap?: (id: string) => void; hasPendingRequest?: boolean; onRequestClick?: () => void; key?: any }) {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl overflow-hidden shadow-sm border border-stone-200 hover:shadow-md transition-shadow"
+      className="bg-white rounded-2xl overflow-hidden shadow-sm border border-stone-200 hover:shadow-md transition-shadow relative"
     >
+      {hasPendingRequest && (
+        <div className="absolute top-0 left-0 right-0 z-20 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest py-1 text-center shadow-lg">
+          Someone Requested Swap!
+        </div>
+      )}
       <div className="relative">
         <img 
           src={item.imageUrl} 
@@ -79,6 +84,16 @@ export default function WasteCard({ item, onSwap }: { item: any; onSwap?: (id: s
             </div>
           )}
         </div>
+
+        {hasPendingRequest && onRequestClick && (
+          <button 
+            onClick={onRequestClick}
+            className="w-full bg-amber-500 text-white py-2.5 rounded-xl font-bold hover:bg-amber-600 transition-all text-sm mb-3 flex items-center justify-center gap-2 shadow-lg shadow-amber-100"
+          >
+            <MessageSquare className="w-4 h-4" />
+            View Request & Chat
+          </button>
+        )}
 
         {onSwap && item.status === 'available' && (
           <div className="flex gap-2">

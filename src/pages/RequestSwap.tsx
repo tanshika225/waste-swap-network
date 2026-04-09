@@ -111,7 +111,9 @@ export default function RequestSwap() {
       const docRef = await addDoc(collection(db, 'swapRequests'), {
         itemId: item.id,
         requesterId: auth.currentUser.uid,
+        requesterName: auth.currentUser.displayName || 'Anonymous',
         ownerId: item.ownerId,
+        ownerName: owner?.displayName || 'Owner',
         offeredItemId: offerType === 'item' ? selectedMyItemId : null,
         offeredRupees: (offerType === 'rupees' || offerType === 'upi') ? offeredRupees : null,
         paymentMethod: offerType === 'item' ? null : offerType,

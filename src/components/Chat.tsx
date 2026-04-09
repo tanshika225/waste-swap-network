@@ -12,13 +12,22 @@ interface Message {
 
 interface ChatProps {
   requestId: string;
+  requesterName?: string;
+  ownerName?: string;
+  requesterId?: string;
 }
 
-export default function Chat({ requestId }: ChatProps) {
+export default function Chat({ requestId, requesterName, ownerName, requesterId }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const getSenderName = (senderId: string) => {
+    if (senderId === auth.currentUser?.uid) return 'You';
+    if (senderId === requesterId) return requesterName || 'Requester';
+    return ownerName || 'Owner';
+  };
 
   useEffect(() => {
     if (!requestId) return;
@@ -58,6 +67,7 @@ export default function Chat({ requestId }: ChatProps) {
       await addDoc(collection(db, 'swapRequests', requestId, 'messages'), {
         requestId,
         senderId: auth.currentUser.uid,
+        senderName: auth.currentUser.displayName || 'Anonymous',
         text,
         createdAt: serverTimestamp()
       });
@@ -98,7 +108,7 @@ export default function Chat({ requestId }: ChatProps) {
                 <div className="flex items-center gap-2 mb-1">
                   <User className="w-3 h-3 opacity-50" />
                   <span className="text-[10px] font-bold opacity-70">
-                    {msg.senderId === auth.currentUser?.uid ? 'You' : 'Other Swapper'}
+                    {getSenderName(msg.senderId)}
                   </span>
                 </div>
                 <p className="leading-relaxed">{msg.text}</p>

@@ -78,7 +78,12 @@ export default function ChatPage() {
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <Chat requestId={request.id} />
+          <Chat 
+            requestId={request.id} 
+            requesterName={request.requesterName}
+            ownerName={request.ownerName}
+            requesterId={request.requesterId}
+          />
         </div>
         
         <div className="space-y-6">

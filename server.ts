@@ -49,7 +49,7 @@ const isAdmin = async (req: express.Request, res: express.Response, next: expres
 
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const isAdminEmail = decodedToken.email === 'jstanshika1402@gmail.com';
+    const isAdminEmail = decodedToken.email === 'jstanshika1402@gmail.com' || decodedToken.email === 'admin@wasteswap.com';
 
     // If it's the hardcoded admin email, let them through immediately
     if (isAdminEmail) {
@@ -287,7 +287,7 @@ async function startServer() {
       const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(users);
     } catch (error: any) {
-      console.error("Admin Users Error:", error.message);
+      console.error("Admin Users Error:", error);
       res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
   });
@@ -309,7 +309,7 @@ async function startServer() {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(items);
     } catch (error: any) {
-      console.error("Admin Waste Error:", error.message);
+      console.error("Admin Waste Error:", error);
       res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
   });
@@ -330,16 +330,30 @@ async function startServer() {
       const swaps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(swaps);
     } catch (error: any) {
-      console.error("Admin Swaps Error:", error.message);
+      console.error("Admin Swaps Error:", error);
       res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
   });
 
   app.get("/api/admin/analytics", isAdmin, async (req, res) => {
     try {
-      const usersCount = (await db.collection('users').count().get()).data().count;
-      const wasteCount = (await db.collection('wasteItems').count().get()).data().count;
-      const swapsCount = (await db.collection('swapRequests').where('status', '==', 'completed').count().get()).data().count;
+      let usersCount = 0;
+      let wasteCount = 0;
+      let swapsCount = 0;
+
+      try {
+        usersCount = (await db.collection('users').count().get()).data().count;
+        wasteCount = (await db.collection('wasteItems').count().get()).data().count;
+        swapsCount = (await db.collection('swapRequests').where('status', '==', 'completed').count().get()).data().count;
+      } catch (countError: any) {
+        console.warn("Firestore count() failed, falling back to manual count:", countError.message);
+        const usersSnap = await db.collection('users').get();
+        const wasteSnap = await db.collection('wasteItems').get();
+        const swapsSnap = await db.collection('swapRequests').where('status', '==', 'completed').get();
+        usersCount = usersSnap.size;
+        wasteCount = wasteSnap.size;
+        swapsCount = swapsSnap.size;
+      }
       
       const itemsSnap = await db.collection('wasteItems').get();
       const totalValue = itemsSnap.docs.reduce((acc, doc) => acc + (doc.data().estimatedValue || 0), 0);
@@ -351,8 +365,12 @@ async function startServer() {
         totalValue
       });
     } catch (error: any) {
-      console.error("Admin Analytics Error:", error.message);
-      res.status(500).json({ error: "Internal Server Error", details: error.message });
+      console.error("Admin Analytics Error:", error);
+      res.status(500).json({ 
+        error: "Internal Server Error", 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   });
 

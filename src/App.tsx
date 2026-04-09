@@ -39,7 +39,7 @@ export default function App() {
       setUser(u);
       if (u) {
         const userDoc = await getDoc(doc(db, 'users', u.uid));
-        const isAdminEmail = u.email === 'jstanshika1402@gmail.com';
+        const isAdminEmail = u.email === 'jstanshika1402@gmail.com' || u.email === 'admin@wasteswap.com';
         setIsAdmin(isAdminEmail || (userDoc.exists() && userDoc.data().role === 'admin'));
       } else {
         setIsAdmin(false);

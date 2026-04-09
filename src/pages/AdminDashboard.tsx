@@ -81,35 +81,73 @@ export default function AdminDashboard() {
 
   if (permissionError) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8 border border-red-100">
-          <div className="flex items-center gap-4 mb-6 text-red-600">
-            <div className="p-3 bg-red-50 rounded-full">
-              <ShieldAlert size={32} />
-            </div>
-            <h1 className="text-2xl font-bold">Database Permission Required</h1>
+      <div className="min-h-screen bg-stone-100 flex items-center justify-center p-6">
+        <div className="max-w-3xl w-full bg-white rounded-[3rem] shadow-2xl p-12 border border-stone-200 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-12 opacity-5">
+            <ShieldAlert size={240} />
           </div>
           
-          <div className="space-y-4 text-gray-600 mb-8">
-            <p className="font-medium text-gray-900">The application's service account needs permission to access Firestore in project <code className="bg-gray-200 px-1 rounded text-sm font-mono">{projectId || 'gen-lang-client-0445465783'}</code>.</p>
-            <p>As the project owner, please follow these steps to grant access:</p>
+          <div className="relative z-10">
+            <div className="flex items-center gap-6 mb-10">
+              <div className="p-5 bg-red-50 rounded-[2rem] text-red-600">
+                <ShieldAlert size={48} />
+              </div>
+              <div>
+                <h1 className="text-4xl font-black text-stone-900 tracking-tight">Backend Access Required</h1>
+                <p className="text-stone-500 font-medium mt-1">Firestore IAM permissions missing</p>
+              </div>
+            </div>
             
-            <ol className="list-decimal list-inside space-y-3 bg-gray-50 p-6 rounded-xl border border-gray-100">
-              <li>Go to the <a href={`https://console.cloud.google.com/iam-admin/iam?project=${projectId || 'gen-lang-client-0445465783'}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">Google Cloud IAM Console</a></li>
-              <li>Ensure you are in the correct project: <code className="bg-gray-200 px-1 rounded text-sm font-mono">{projectId || 'gen-lang-client-0445465783'}</code></li>
-              <li>Click <strong>GRANT ACCESS</strong> at the top</li>
-              <li>In the "New principals" field, paste: <code className="bg-gray-200 px-1 rounded text-sm font-mono">{serviceAccountEmail || '34901887695-compute@developer.gserviceaccount.com'}</code></li>
-              <li>Search for and select <strong>Cloud Datastore User</strong> as the role</li>
-              <li>Click <strong>Save</strong> and refresh this page</li>
-            </ol>
-          </div>
+            <div className="space-y-6 text-stone-600 mb-12">
+              <p className="text-lg leading-relaxed">
+                The application's backend service account needs the <strong className="text-stone-900">Cloud Datastore User</strong> role to manage the database in project <code className="bg-stone-100 px-2 py-1 rounded-lg text-sm font-mono text-red-600 border border-red-100">{projectId || 'gen-lang-client-0445465783'}</code>.
+              </p>
+              
+              <div className="bg-stone-50 p-8 rounded-[2.5rem] border border-stone-200">
+                <h3 className="text-sm font-black text-stone-400 uppercase tracking-widest mb-6">Setup Instructions</h3>
+                <ol className="space-y-6">
+                  <li className="flex gap-4">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-sm">1</span>
+                    <p className="font-medium">Open the <a href={`https://console.cloud.google.com/iam-admin/iam?project=${projectId || 'gen-lang-client-0445465783'}`} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline decoration-2 underline-offset-4">Google Cloud IAM Console</a></p>
+                  </li>
+                  <li className="flex gap-4">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-sm">2</span>
+                    <p className="font-medium">Click <strong className="text-stone-900">GRANT ACCESS</strong> at the top of the page</p>
+                  </li>
+                  <li className="flex gap-4">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-sm">3</span>
+                    <div className="space-y-2">
+                      <p className="font-medium">In the "New principals" field, paste this email:</p>
+                      <div className="flex items-center gap-2 group">
+                        <code className="bg-white px-4 py-2 rounded-xl text-sm font-mono text-emerald-600 border border-stone-200 shadow-sm block w-full break-all">
+                          {serviceAccountEmail || '34901887695-compute@developer.gserviceaccount.com'}
+                        </code>
+                      </div>
+                    </div>
+                  </li>
+                  <li className="flex gap-4">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-sm">4</span>
+                    <p className="font-medium">Assign the <strong className="text-stone-900">Cloud Datastore User</strong> role and click <strong className="text-stone-900">Save</strong></p>
+                  </li>
+                </ol>
+              </div>
+            </div>
 
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
-          >
-            I've added the role, refresh page
-          </button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button 
+                onClick={() => window.location.reload()}
+                className="flex-1 py-5 bg-emerald-600 text-white rounded-[1.5rem] font-black text-lg hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200 active:scale-[0.98]"
+              >
+                I've Added the Role
+              </button>
+              <button 
+                onClick={() => navigate('/')}
+                className="px-10 py-5 bg-stone-100 text-stone-600 rounded-[1.5rem] font-black text-lg hover:bg-stone-200 transition-all"
+              >
+                Back to Home
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );

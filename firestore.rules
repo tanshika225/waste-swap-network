@@ -13,7 +13,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "jstanshika1402@gmail.com" && request.auth.token.email_verified == true));
+         (request.auth.token.email in ["jstanshika1402@gmail.com", "admin@wasteswap.com"]));
     }
     function isNotBlocked() {
       return !('blocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || 
@@ -38,9 +38,12 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && 
-        request.resource.data.role == 'user';
+        (request.resource.data.role == 'user' || 
+         (request.auth.token.email in ["jstanshika1402@gmail.com", "admin@wasteswap.com"] && request.resource.data.role == 'admin'));
       allow update: if (isOwner(userId) && 
-        request.resource.data.role == resource.data.role && isNotBlocked()) || isAdmin();
+        (request.resource.data.role == resource.data.role || 
+         (request.auth.token.email in ["jstanshika1402@gmail.com", "admin@wasteswap.com"] && request.resource.data.role == 'admin')) 
+        && isNotBlocked()) || isAdmin();
     }
 
     // ===============================================================

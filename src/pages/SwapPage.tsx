@@ -34,7 +34,7 @@ export default function SwapPage() {
       let fetchedItems = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      })) as any[];
 
       // Client-side filtering for complex filters
       if (wasteType) {

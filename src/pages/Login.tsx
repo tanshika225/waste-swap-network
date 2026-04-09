@@ -19,7 +19,7 @@ export default function Login() {
     const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists()) {
-      const isAdminEmail = user.email === 'jstanshika1402@gmail.com';
+      const isAdminEmail = user.email === 'jstanshika1402@gmail.com' || user.email === 'admin@wasteswap.com';
       await setDoc(userRef, {
         uid: user.uid,
         displayName: user.displayName || user.email.split('@')[0],
@@ -94,7 +94,13 @@ export default function Login() {
       navigate('/dashboard');
     } catch (error: any) {
       console.error('Email auth failed:', error);
-      toast.error(error.message || 'Authentication failed');
+      if (error.code === 'auth/operation-not-allowed') {
+        toast.error('Email/Password login is not enabled in Firebase. Please enable it in the Firebase Console > Authentication > Sign-in method.');
+      } else if (error.code === 'auth/invalid-credential') {
+        toast.error('Invalid credentials. If you are trying to log in, make sure you have signed up first.');
+      } else {
+        toast.error(error.message || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }

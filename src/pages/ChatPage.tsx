@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { motion } from 'motion/react';
-import { ArrowLeft, Package, Recycle, Award, Loader2 } from 'lucide-react';
+import { ArrowLeft, Package, Recycle, Award, Loader2, CheckCircle2 } from 'lucide-react';
 import Chat from '../components/Chat';
 
 export default function ChatPage() {
@@ -64,17 +64,40 @@ export default function ChatPage() {
         <div className="flex items-center gap-3 px-6 py-3 bg-stone-50 rounded-2xl border border-stone-100">
           <div className="text-right">
             <div className="text-[10px] uppercase font-bold text-stone-400">Status</div>
-            <div className="text-sm font-bold text-emerald-600 capitalize">{request.status}</div>
+            <div className={`text-sm font-bold capitalize ${request.status === 'completed' ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {request.status}
+            </div>
           </div>
           <div className="w-px h-8 bg-stone-200 mx-2" />
           <div className="text-right">
             <div className="text-[10px] uppercase font-bold text-stone-400">Offer</div>
             <div className="text-sm font-bold text-stone-800">
-              {request.offeredItemId ? 'Item Swap' : `${request.offeredCredits} Credits`}
+              {request.offeredItemId ? 'Item Swap' : `₹${request.offeredRupees}`}
             </div>
           </div>
         </div>
       </header>
+
+      {request.status === 'completed' && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-emerald-600 text-white p-6 rounded-3xl flex items-center justify-between shadow-lg shadow-emerald-100"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg">Swap Successfully Completed!</h3>
+              <p className="text-emerald-50 text-sm">Both users have confirmed the exchange. Impact points have been awarded.</p>
+            </div>
+          </div>
+          <div className="hidden md:block bg-white/20 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest">
+            +5 CO2 Saved
+          </div>
+        </motion.div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">

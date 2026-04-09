@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment, writeBatch, orderBy, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
@@ -53,22 +53,39 @@ export default function Dashboard() {
     };
 
     // Fetch my items
-    const qItems = query(collection(db, 'wasteItems'), where('ownerId', '==', user.uid));
+    const qItems = query(
+      collection(db, 'wasteItems'), 
+      where('ownerId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
     const unsubItems = onSnapshot(qItems, (snap) => {
       setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
       console.error('My Items Snapshot Error:', error);
+      // Fallback: if index is missing, fetch without order and sort client-side
+      if (error.message?.includes('index')) {
+        const qFallback = query(collection(db, 'wasteItems'), where('ownerId', '==', user.uid));
+        onSnapshot(qFallback, (snap) => {
+          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+          });
+          setMyItems(docs);
+        });
+      }
     });
 
     // Fetch my requests (sent)
     const qReqs = query(collection(db, 'swapRequests'), where('requesterId', '==', user.uid));
     const unsubReqs = onSnapshot(qReqs, (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Sort client-side: older top, recent down (ascending)
+      // Sort client-side: recent top, older down (descending)
       docs.sort((a: any, b: any) => {
         const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
         const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
-        return timeA - timeB;
+        return timeB - timeA;
       });
       setMyRequests(docs);
     }, (error) => {
@@ -79,11 +96,11 @@ export default function Dashboard() {
     const qRecv = query(collection(db, 'swapRequests'), where('ownerId', '==', user.uid));
     const unsubRecv = onSnapshot(qRecv, (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      // Sort client-side: older top, recent down (ascending)
+      // Sort client-side: recent top, older down (descending)
       docs.sort((a: any, b: any) => {
         const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
         const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
-        return timeA - timeB;
+        return timeB - timeA;
       });
       setReceivedRequests(docs);
       
@@ -121,6 +138,13 @@ export default function Dashboard() {
         if (reqData.offeredItemId) {
           batch.update(doc(db, 'wasteItems', reqData.offeredItemId), { status: 'pending' });
         }
+        // Add system message
+        const msgRef = doc(collection(db, 'swapRequests', requestId, 'messages'));
+        batch.set(msgRef, {
+          senderId: 'system',
+          text: 'Swap Request Accepted! Coordinate the exchange below.',
+          createdAt: serverTimestamp()
+        });
       } else if (status === 'rejected') {
         batch.update(reqRef, { status: 'rejected' });
       } else if (status === 'completed') {
@@ -132,6 +156,14 @@ export default function Dashboard() {
         if (reqData.offeredItemId) {
           batch.update(doc(db, 'wasteItems', reqData.offeredItemId), { status: 'swapped' });
         }
+
+        // Add system message
+        const msgRef = doc(collection(db, 'swapRequests', requestId, 'messages'));
+        batch.set(msgRef, {
+          senderId: 'system',
+          text: 'Swap Successfully Completed! Impact stats updated.',
+          createdAt: serverTimestamp()
+        });
 
         // Handle Credits if any
         if (reqData.offeredRupees > 0) {

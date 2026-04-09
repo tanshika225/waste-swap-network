@@ -24,6 +24,7 @@ export default function Chat({ requestId, requesterName, ownerName, requesterId 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const getSenderName = (senderId: string) => {
+    if (senderId === 'system') return 'System';
     if (senderId === auth.currentUser?.uid) return 'You';
     if (senderId === requesterId) return requesterName || 'Requester';
     return ownerName || 'Owner';
@@ -96,23 +97,29 @@ export default function Chat({ requestId, requesterName, ownerName, requesterId 
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex ${msg.senderId === auth.currentUser?.uid ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${msg.senderId === 'system' ? 'justify-center' : msg.senderId === auth.currentUser?.uid ? 'justify-end' : 'justify-start'}`}
             >
-              <div
-                className={`max-w-[80%] p-4 rounded-2xl text-sm ${
-                  msg.senderId === auth.currentUser?.uid
-                    ? 'bg-emerald-600 text-white rounded-tr-none'
-                    : 'bg-white text-stone-800 border border-stone-200 rounded-tl-none shadow-sm'
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <User className="w-3 h-3 opacity-50" />
-                  <span className="text-[10px] font-bold opacity-70">
-                    {getSenderName(msg.senderId)}
-                  </span>
+              {msg.senderId === 'system' ? (
+                <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100 shadow-sm">
+                  {msg.text}
                 </div>
-                <p className="leading-relaxed">{msg.text}</p>
-              </div>
+              ) : (
+                <div
+                  className={`max-w-[80%] p-4 rounded-2xl text-sm ${
+                    msg.senderId === auth.currentUser?.uid
+                      ? 'bg-emerald-600 text-white rounded-tr-none'
+                      : 'bg-white text-stone-800 border border-stone-200 rounded-tl-none shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <User className="w-3 h-3 opacity-50" />
+                    <span className="text-[10px] font-bold opacity-70">
+                      {getSenderName(msg.senderId)}
+                    </span>
+                  </div>
+                  <p className="leading-relaxed">{msg.text}</p>
+                </div>
+              )}
             </div>
           ))
         )}

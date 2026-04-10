@@ -12,11 +12,13 @@ service cloud.firestore {
     }
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "admin@wasteswap.com"));
+        (request.auth.token.email == "admin@wasteswap.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
     function isNotBlocked() {
-      return !('blocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || 
+      return !exists(/databases/$(database)/documents/users/$(request.auth.uid)) || 
+             !('blocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || 
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.blocked == false;
     }
     function isAuthorized() {
@@ -43,7 +45,9 @@ service cloud.firestore {
       allow update: if (isOwner(userId) && 
         (request.resource.data.role == resource.data.role || 
          (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.role == 'admin')) 
-        && isNotBlocked()) || isAdmin();
+        && isNotBlocked()) || isAdmin() ||
+        // Allow updating impact stats
+        (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['impact']));
     }
 
     // ===============================================================
@@ -61,7 +65,10 @@ service cloud.firestore {
         resource.data.ownerId == request.auth.uid || 
         isAdmin() || 
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestCount']) && 
-         request.resource.data.requestCount == resource.data.requestCount + 1)
+         request.resource.data.requestCount == resource.data.requestCount + 1) ||
+        // Allow status updates if part of an accepted/completed swap
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+         request.resource.data.status in ['pending', 'swapped', 'available'])
       );
       allow delete: if isAuthorized() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
@@ -74,15 +81,15 @@ service cloud.firestore {
       allow create: if isAuthorized() && 
         request.resource.data.requesterId == request.auth.uid &&
         (request.resource.data.offeredRupees == null || request.resource.data.offeredRupees >= 0) &&
-        (request.resource.data.paymentMethod == null || request.resource.data.paymentMethod in ['stripe', 'upi']) &&
-        (request.resource.data.paymentStatus == null || request.resource.data.paymentStatus in ['pending', 'completed', 'failed']) &&
+        (request.resource.data.paymentMethod == null || request.resource.data.paymentMethod == 'upi') &&
+        (request.resource.data.paymentStatus == null || request.resource.data.paymentStatus in ['pending', 'completed']) &&
         isValidDateString(request.resource.data.pickupDate) &&
         isValidTimeString(request.resource.data.pickupTime) &&
         request.resource.data.pickupLocation is string &&
         request.resource.data.pickupLocation.size() > 0 &&
         request.resource.data.pickupLocation.size() < 500;
       allow update: if isAuthorized() && (resource.data.requesterId == request.auth.uid || resource.data.ownerId == request.auth.uid || isAdmin()) &&
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paymentStatus', 'paymentConfirmedAt']) || isAdmin());
+        (request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'paymentStatus', 'paymentConfirmedAt']) || isAdmin());
 
       match /messages/{messageId} {
         allow read: if isAuthenticated() && (get(/databases/$(database)/documents/swapRequests/$(requestId)).data.requesterId == request.auth.uid || get(/databases/$(database)/documents/swapRequests/$(requestId)).data.ownerId == request.auth.uid || isAdmin());

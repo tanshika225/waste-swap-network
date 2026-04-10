@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, arrayRemove, increment, getDocs, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, arrayRemove, increment, getDocs, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, MessageSquare, Share2, Plus, X, Image as ImageIcon, Video, Loader2, Send, Trash2 } from 'lucide-react';
+import { Heart, MessageSquare, Share2, Plus, X, Image as ImageIcon, Video, Loader2, Send, Trash2, ChevronDown } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -36,7 +36,12 @@ function CommentSection({ postId, onClose }: { postId: string; onClose: () => vo
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'upcyclePosts', postId, 'comments'), orderBy('createdAt', 'asc'));
+    // Limit to 50 most recent comments to save quota
+    const q = query(
+      collection(db, 'upcyclePosts', postId, 'comments'), 
+      orderBy('createdAt', 'asc'),
+      limit(50)
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const commentsData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -148,6 +153,9 @@ function CommentSection({ postId, onClose }: { postId: string; onClose: () => vo
 export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show: boolean) => void }) {
   const [posts, setPosts] = useState<UpcyclePost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
+  const [hasMore, setHasMore] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
   const [newPost, setNewPost] = useState({ title: '', description: '', imageUrl: '', videoUrl: '' });
@@ -160,20 +168,46 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
     }
   }, [showCreateModal, activeCommentsPostId, onModalToggle]);
 
-  useEffect(() => {
-    const q = query(collection(db, 'upcyclePosts'), orderBy('createdAt', 'desc'), limit(20));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  const fetchPosts = async (isLoadMore = false) => {
+    if (isLoadMore) setLoadingMore(true);
+    else setLoading(true);
+
+    try {
+      let q = query(
+        collection(db, 'upcyclePosts'), 
+        orderBy('createdAt', 'desc'), 
+        limit(10)
+      );
+
+      if (isLoadMore && lastDoc) {
+        q = query(q, startAfter(lastDoc));
+      }
+
+      const snapshot = await getDocs(q);
       const postsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as UpcyclePost[];
-      setPosts(postsData);
+
+      if (isLoadMore) {
+        setPosts(prev => [...prev, ...postsData]);
+      } else {
+        setPosts(postsData);
+      }
+
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      setHasMore(snapshot.docs.length === 10);
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+      toast.error('Failed to load posts');
+    } finally {
       setLoading(false);
-    }, (error) => {
-      console.error("Upcycle Forum Snapshot Error:", error);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPosts();
   }, []);
 
   const handleLike = async (postId: string, likedBy: string[]) => {
@@ -183,12 +217,25 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
     const isLiked = likedBy.includes(userId);
 
     try {
+      // Optimistic UI update
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            likes: isLiked ? p.likes - 1 : p.likes + 1,
+            likedBy: isLiked ? p.likedBy.filter(id => id !== userId) : [...p.likedBy, userId]
+          };
+        }
+        return p;
+      }));
+
       await updateDoc(postRef, {
         likes: isLiked ? likedBy.length - 1 : likedBy.length + 1,
         likedBy: isLiked ? arrayRemove(userId) : arrayUnion(userId)
       });
     } catch (error) {
       console.error("Error liking post:", error);
+      toast.error('Failed to update like');
     }
   };
 
@@ -342,6 +389,25 @@ export default function UpcycleForum({ onModalToggle }: { onModalToggle?: (show:
                 </div>
               </motion.div>
             ))}
+            
+            {hasMore && (
+              <div className="col-span-full flex justify-center pt-8">
+                <button
+                  onClick={() => fetchPosts(true)}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-8 py-3 bg-white border border-stone-200 rounded-2xl font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50 shadow-sm"
+                >
+                  {loadingMore ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <ChevronDown className="w-5 h-5" />
+                      Load More Projects
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )
       )}

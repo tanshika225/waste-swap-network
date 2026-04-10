@@ -4,7 +4,7 @@ import axios from 'axios';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import WasteCard from '../components/WasteCard';
-import { Search, Navigation, Filter, X, ChevronDown } from 'lucide-react';
+import { Search, Navigation, Filter, X, ChevronDown, Loader2 } from 'lucide-react';
 import { getCurrentLocation, Location } from '../lib/location';
 
 const CATEGORIES = ["plastic", "paper", "metal", "glass", "organic", "other"];
@@ -24,19 +24,28 @@ export default function SwapPage() {
   const [radius, setRadius] = useState('5');
   const [useRadiusFilter, setUseRadiusFilter] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
+      setPage(1); // Reset page on search
     }, 500);
     return () => clearTimeout(timer);
   }, [search]);
 
   useEffect(() => {
-    const fetchItems = async () => {
-      setLoading(true);
+    const fetchItems = async (isLoadMore = false) => {
+      if (isLoadMore) setLoadingMore(true);
+      else setLoading(true);
+      
       try {
-        const params: any = {};
+        const params: any = {
+          page: isLoadMore ? page + 1 : 1,
+          limit: 12
+        };
         if (wasteType) params.wasteType = wasteType;
         if (minPrice) params.minPrice = minPrice;
         if (maxPrice) params.maxPrice = maxPrice;
@@ -47,15 +56,57 @@ export default function SwapPage() {
         }
 
         const response = await axios.get('/api/waste-items', { params });
-        setItems(response.data);
+        const newItems = response.data;
+        
+        if (isLoadMore) {
+          setItems(prev => [...prev, ...newItems]);
+          setPage(prev => prev + 1);
+        } else {
+          setItems(newItems);
+          setPage(1);
+        }
+        
+        setHasMore(newItems.length === 12);
       } catch (error) {
         console.error('Failed to fetch items:', error);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     };
     fetchItems();
   }, [wasteType, minPrice, maxPrice, useRadiusFilter, userLocation, radius]);
+
+  const loadMore = async () => {
+    if (loading || loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const params: any = {
+        page: page + 1,
+        limit: 12
+      };
+      if (wasteType) params.wasteType = wasteType;
+      if (minPrice) params.minPrice = minPrice;
+      if (maxPrice) params.maxPrice = maxPrice;
+      if (useRadiusFilter && userLocation) {
+        params.lat = userLocation.lat;
+        params.lng = userLocation.lng;
+        params.radius = radius;
+      }
+
+      const response = await axios.get('/api/waste-items', { params });
+      const newItems = response.data;
+      
+      setItems(prev => [...prev, ...newItems]);
+      setPage(prev => prev + 1);
+      setHasMore(newItems.length === 12);
+    } catch (error) {
+      console.error('Failed to load more items:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     const fetchLocation = async () => {
@@ -261,12 +312,32 @@ export default function SwapPage() {
             <WasteCard key={item.id} item={item} onSwap={handleSwapRequest} />
           ))
         )}
-        {!loading && filteredItems.length === 0 && (
+      </div>
+
+      {hasMore && !loading && (
+        <div className="flex justify-center pt-8">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-stone-200 rounded-2xl font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50 shadow-sm"
+          >
+            {loadingMore ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <ChevronDown className="w-5 h-5" />
+                Load More Items
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {!loading && filteredItems.length === 0 && (
           <div className="col-span-full py-20 text-center text-stone-400">
             No items found matching your search.
           </div>
         )}
-      </div>
     </div>
   );
 }

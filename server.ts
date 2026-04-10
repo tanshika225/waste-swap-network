@@ -4,7 +4,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import axios from "axios";
 import { fileURLToPath } from "url";
-import Stripe from 'stripe';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
@@ -311,21 +310,28 @@ async function startServer() {
         ]);
       }
 
-      const { wasteType, minPrice, maxPrice, lat, lng, radius } = req.query;
+      const { wasteType, minPrice, maxPrice, lat, lng, radius, page = 1, limit: limitParam = 12 } = req.query;
+      const pageSize = Number(limitParam);
+      const pageNum = Number(page);
       
       // Check cache (only for general queries without specific filters for simplicity)
-      if (!wasteType && !minPrice && !maxPrice && !lat && wasteItemsCache && (Date.now() - wasteItemsCache.timestamp < WASTE_CACHE_DURATION)) {
+      if (!wasteType && !minPrice && !maxPrice && !lat && pageNum === 1 && wasteItemsCache && (Date.now() - wasteItemsCache.timestamp < WASTE_CACHE_DURATION)) {
         return res.json(wasteItemsCache.data);
       }
 
       let query: admin.firestore.Query = db.collection('wasteItems')
         .where('status', '==', 'available')
-        .limit(100); // Limit to 100 items to save quota
+        .orderBy('createdAt', 'desc');
       
       if (wasteType) {
         query = query.where('category', '==', wasteType);
       }
       
+      // If we are not using geo-filtering, we can use Firestore pagination
+      // If we ARE using geo-filtering, we have to fetch more and filter in memory
+      const fetchLimit = (lat && lng) ? 100 : pageSize * pageNum;
+      query = query.limit(fetchLimit);
+
       const snapshot = await query.get();
       let items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       
@@ -348,13 +354,17 @@ async function startServer() {
           return dist <= maxDist;
         });
       }
+
+      // Manual pagination for memory-filtered results or simple slice
+      const start = (pageNum - 1) * pageSize;
+      const paginatedItems = items.slice(start, start + pageSize);
       
       // Update cache if it's a general query
-      if (!wasteType && !minPrice && !maxPrice && !lat) {
-        wasteItemsCache = { data: items, timestamp: Date.now() };
+      if (!wasteType && !minPrice && !maxPrice && !lat && pageNum === 1) {
+        wasteItemsCache = { data: paginatedItems, timestamp: Date.now() };
       }
 
-      res.json(items);
+      res.json(paginatedItems);
     } catch (error: any) {
       console.error("Fetch Waste Items Error:", error);
       const isQuotaError = error.message?.includes('RESOURCE_EXHAUSTED') || 
@@ -508,49 +518,34 @@ async function startServer() {
     }
   });
 
-  app.post("/api/create-checkout-session", async (req, res) => {
+  app.post("/api/payments/confirm", authenticate, async (req, res) => {
+    const { requestId, amount, wasteId } = req.body;
+    const user = (req as any).user;
+
+    if (!requestId) {
+      return res.status(400).json({ error: "Missing requestId" });
+    }
+
     try {
-      const { amount, requestId, itemName } = req.body;
-      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-      
-      // Verification Mode: If key is 'DUMMY', simulate a successful session
-      if (stripeSecretKey === 'DUMMY') {
-        console.log("Verification Mode: Simulating Stripe Checkout for", itemName);
-        return res.json({ 
-          url: `${process.env.APP_URL}/dashboard?payment=success&requestId=${requestId}&mode=verification` 
-        });
-      }
-
-      if (!stripeSecretKey) {
-        return res.status(500).json({ error: "STRIPE_SECRET_KEY is not configured. Use 'DUMMY' to verify the app flow." });
-      }
-      const stripe = new Stripe(stripeSecretKey);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card', 'upi'] as any[],
-        line_items: [
-          {
-            price_data: {
-              currency: 'inr',
-              product_data: {
-                name: `Swap Payment: ${itemName}`,
-              },
-              unit_amount: amount * 100, // Stripe expects amount in paise
-            },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        success_url: `${process.env.APP_URL}/dashboard?payment=success&requestId=${requestId}`,
-        cancel_url: `${process.env.APP_URL}/dashboard?payment=cancel`,
-        metadata: {
-          requestId,
-        },
+      // Save payment record
+      await db.collection('payments').add({
+        userId: user.uid,
+        wasteId: wasteId || null,
+        requestId: requestId,
+        amount: amount,
+        status: 'completed',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      res.json({ url: session.url });
+      // Update swap request status
+      await db.collection('swapRequests').doc(requestId).update({
+        paymentStatus: 'completed',
+        paymentConfirmedAt: new Date().toISOString()
+      });
+
+      res.json({ success: true, message: "Payment confirmed and saved" });
     } catch (error: any) {
-      console.error("Stripe Checkout Error:", error);
+      console.error("Payment Confirmation Error:", error);
       res.status(500).json({ error: error.message });
     }
   });

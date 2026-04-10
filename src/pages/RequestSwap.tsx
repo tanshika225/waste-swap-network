@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { motion } from 'motion/react';
-import { ArrowRight, Recycle, Award, Package, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowRight, Recycle, Award, Package, Loader2, CheckCircle2, AlertCircle, IndianRupee } from 'lucide-react';
 import WasteCard from '../components/WasteCard';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -18,32 +18,12 @@ export default function RequestSwap() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
-  const [offerType, setOfferType] = useState<'item' | 'rupees' | 'upi'>('item');
+  const [offerType, setOfferType] = useState<'item' | 'upi'>('item');
   const [selectedMyItemId, setSelectedMyItemId] = useState<string>('');
   const [offeredRupees, setOfferedRupees] = useState<number>(0);
-  const [upiVpa, setUpiVpa] = useState('chennai-swap@upi'); // Placeholder VPA
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [pickupDate, setPickupDate] = useState('');
   const [pickupTime, setPickupTime] = useState('');
   const [pickupLocation, setPickupLocation] = useState('');
-
-  const initiateStripePayment = async (amount: number, requestId: string, itemName: string) => {
-    try {
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ amount, requestId, itemName }),
-      });
-      const { url, error } = await response.json();
-      if (error) throw new Error(error);
-      window.location.href = url;
-    } catch (error: any) {
-      console.error('Payment initialization failed:', error);
-      alert('Payment failed to initialize. Please try again.');
-    }
-  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -115,13 +95,8 @@ export default function RequestSwap() {
       return;
     }
     
-    if (offerType === 'rupees' && offeredRupees <= 0) {
-      toast.error('Please enter a valid amount of Rupees.');
-      return;
-    }
- 
-    if (offerType === 'upi' && (!paymentConfirmed || offeredRupees <= 0)) {
-      toast.error('Please complete the UPI payment and confirm it manually.');
+    if (offerType === 'upi' && offeredRupees <= 0) {
+      toast.error('Please enter a valid amount for UPI payment.');
       return;
     }
  
@@ -134,15 +109,18 @@ export default function RequestSwap() {
     try {
       const docRef = await addDoc(collection(db, 'swapRequests'), {
         itemId: item.id,
+        itemTitle: item.title,
+        itemImageUrl: item.imageUrl,
         requesterId: auth.currentUser.uid,
         requesterName: auth.currentUser.displayName || 'Anonymous',
         ownerId: item.ownerId,
         ownerName: owner?.displayName || 'Owner',
         offeredItemId: offerType === 'item' ? selectedMyItemId : null,
-        offeredRupees: (offerType === 'rupees' || offerType === 'upi') ? offeredRupees : null,
-        paymentMethod: offerType === 'item' ? null : offerType,
-        paymentStatus: offerType === 'upi' ? 'completed' : (offerType === 'rupees' ? 'pending' : null),
-        paymentConfirmedAt: offerType === 'upi' ? new Date().toISOString() : null,
+        offeredItemTitle: offerType === 'item' ? myItems.find(i => i.id === selectedMyItemId)?.title : null,
+        offeredItemImageUrl: offerType === 'item' ? myItems.find(i => i.id === selectedMyItemId)?.imageUrl : null,
+        offeredRupees: offerType === 'upi' ? offeredRupees : null,
+        paymentMethod: offerType === 'item' ? null : 'upi',
+        paymentStatus: 'pending',
         status: 'pending',
         pickupDate,
         pickupTime,
@@ -178,9 +156,9 @@ export default function RequestSwap() {
         createdAt: serverTimestamp()
       });
 
-      if (offerType === 'rupees') {
-        toast.info('Redirecting to secure payment...');
-        await initiateStripePayment(offeredRupees, docRef.id, item.title);
+      if (offerType === 'upi') {
+        toast.info('Redirecting to UPI payment page...');
+        navigate(`/payment?requestId=${docRef.id}&amount=${offeredRupees}&itemName=${encodeURIComponent(item.title)}&wasteId=${item.id}`);
       } else {
         toast.success('Swap request sent successfully! 🤝');
         navigate(`/chat/${docRef.id}`);
@@ -191,12 +169,6 @@ export default function RequestSwap() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const getUpiLink = () => {
-    const name = encodeURIComponent(owner?.displayName || 'Chennai Swap');
-    const note = encodeURIComponent(`Swap for ${item.title}`);
-    return `upi://pay?pa=${upiVpa}&pn=${name}&am=${offeredRupees}&cu=INR&tn=${note}`;
   };
 
   if (loading) return <div className="py-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-emerald-600" /></div>;
@@ -242,16 +214,10 @@ export default function RequestSwap() {
               Item
             </button>
             <button 
-              onClick={() => setOfferType('rupees')}
-              className={`flex-1 min-w-[100px] py-3 rounded-xl font-bold transition-all text-sm ${offerType === 'rupees' ? 'bg-white text-emerald-600 shadow-sm' : 'text-stone-500'}`}
-            >
-              Stripe
-            </button>
-            <button 
               onClick={() => setOfferType('upi')}
-              className={`flex-1 min-w-[100px] py-3 rounded-xl font-bold transition-all text-sm ${offerType === 'upi' ? 'bg-white text-emerald-600 shadow-sm' : 'text-stone-500'}`}
+              className={`flex-1 min-w-[100px] py-3 rounded-xl font-bold transition-all text-sm ${offerType === 'upi' ? 'bg-white text-emerald-600 shadow-sm' : 'text-stone-50'}`}
             >
-              UPI Pay
+              UPI Payment
             </button>
           </div>
 
@@ -283,14 +249,14 @@ export default function RequestSwap() {
                 </div>
               )}
             </div>
-          ) : offerType === 'rupees' ? (
+          ) : (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-bold text-stone-700">Amount in Rupees (₹):</label>
-                <div className="text-xs text-stone-500 font-bold italic">Secure Bank Transfer via Stripe</div>
+                <div className="text-xs text-stone-500 font-bold italic">Pay via any UPI App</div>
               </div>
               <div className="relative">
-                <Award className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-500" />
+                <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-500" />
                 <input 
                   type="number"
                   value={offeredRupees}
@@ -299,54 +265,7 @@ export default function RequestSwap() {
                   placeholder="0"
                 />
               </div>
-              <p className="text-[10px] text-stone-400">You will be redirected to a secure payment page to complete the transaction.</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <label className="text-sm font-bold text-stone-700">Enter Amount (₹):</label>
-                <input 
-                  type="number"
-                  value={offeredRupees}
-                  onChange={(e) => setOfferedRupees(Number(e.target.value))}
-                  className="w-full p-4 rounded-2xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-lg"
-                  placeholder="0"
-                />
-              </div>
-
-              {offeredRupees > 0 && (
-                <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center text-white">
-                      <Award className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-stone-900">Pay via UPI</div>
-                      <div className="text-xs text-stone-500">Scan or click to pay ₹{offeredRupees}</div>
-                    </div>
-                  </div>
-                  
-                  <a 
-                    href={getUpiLink()}
-                    className="block w-full bg-stone-900 text-white py-3 rounded-xl font-bold text-center hover:bg-black transition-all"
-                  >
-                    Pay with UPI App
-                  </a>
-
-                  <div className="flex items-center gap-3 pt-4 border-t border-emerald-200">
-                    <input 
-                      type="checkbox"
-                      id="confirm-upi"
-                      checked={paymentConfirmed}
-                      onChange={(e) => setPaymentConfirmed(e.target.checked)}
-                      className="w-5 h-5 accent-emerald-600"
-                    />
-                    <label htmlFor="confirm-upi" className="text-xs font-bold text-stone-700 cursor-pointer">
-                      I have successfully completed the payment
-                    </label>
-                  </div>
-                </div>
-              )}
+              <p className="text-[10px] text-stone-400">You will be redirected to a UPI payment page with a QR code after submitting.</p>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Send, Loader2, User } from 'lucide-react';
 
@@ -35,7 +35,8 @@ export default function Chat({ requestId, requesterName, ownerName, requesterId 
 
     const q = query(
       collection(db, 'swapRequests', requestId, 'messages'),
-      orderBy('createdAt', 'asc')
+      orderBy('createdAt', 'desc'),
+      limit(20)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -43,7 +44,8 @@ export default function Chat({ requestId, requesterName, ownerName, requesterId 
         id: doc.id,
         ...doc.data()
       })) as Message[];
-      setMessages(msgs);
+      // Reverse because we ordered by desc to get the latest 20
+      setMessages(msgs.reverse());
       setLoading(false);
       
       // Scroll to bottom

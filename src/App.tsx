@@ -16,6 +16,7 @@ import SwapPage from './pages/SwapPage';
 import RequestSwap from './pages/RequestSwap';
 import ChatPage from './pages/ChatPage';
 import Profile from './pages/Profile';
+import PaymentPage from './pages/PaymentPage';
 import UpcycleForum from './pages/UpcycleForum';
 import ResetPassword from './pages/ResetPassword';
 import AdminLogin from './pages/AdminLogin';
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="/request-swap/:itemId" element={user ? <RequestSwap /> : <Navigate to="/login" />} />
           <Route path="/chat/:requestId" element={user ? <ChatPage /> : <Navigate to="/login" />} />
           <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+          <Route path="/payment" element={user ? <PaymentPage /> : <Navigate to="/login" />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           
           {/* Admin Routes */}

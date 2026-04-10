@@ -4,7 +4,7 @@ import axios from 'axios';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import WasteCard from '../components/WasteCard';
-import { Search, Navigation, Filter, X, ChevronDown, Loader2 } from 'lucide-react';
+import { Search, Navigation, Filter, X, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { getCurrentLocation, Location } from '../lib/location';
 import { toast } from 'sonner';
 
@@ -62,6 +62,7 @@ export default function SwapPage() {
           timeout: 10000 // 10s timeout
         });
         const newItems = response.data;
+        console.log(`Fetched ${newItems.length} items from server`, { params });
         
         if (isLoadMore) {
           setItems(prev => [...prev, ...newItems]);
@@ -189,6 +190,18 @@ export default function SwapPage() {
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
             />
           </div>
+          
+          <button
+            onClick={() => {
+              setItems([]);
+              setPage(1);
+              toast.info('Refreshing items...');
+            }}
+            className="p-2.5 bg-white border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 transition-all shadow-sm"
+            title="Refresh items"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
           
           <div className="flex items-center gap-2">
             <button

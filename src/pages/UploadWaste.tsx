@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, Camera, Loader2, CheckCircle2, Scale, Leaf, Info, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getCurrentLocation, Location } from '../lib/location';
+import { compressImage } from '../lib/imageUtils';
 import { toast } from 'sonner';
 
 export default function UploadWaste() {
@@ -31,12 +32,24 @@ export default function UploadWaste() {
       .catch(err => console.error('Failed to get location for upload:', err));
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
       const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result as string);
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        try {
+          setLoading(true);
+          const compressed = await compressImage(base64);
+          setPreview(compressed);
+        } catch (err) {
+          console.error('Compression failed:', err);
+          setPreview(base64);
+        } finally {
+          setLoading(false);
+        }
+      };
       reader.readAsDataURL(selectedFile);
     }
   };
@@ -68,6 +81,13 @@ export default function UploadWaste() {
     setLoading(true);
 
     try {
+      // Safety check for base64 size (Firestore limit is 1MB)
+      if (preview && preview.length > 1000000) {
+        toast.error('Image is too large. Please try a smaller photo.');
+        setLoading(false);
+        return;
+      }
+
       await addDoc(collection(db, 'wasteItems'), {
         ownerId: auth.currentUser.uid,
         ownerName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Anonymous',

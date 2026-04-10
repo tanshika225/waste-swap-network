@@ -28,15 +28,31 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import axios from 'axios';
 
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hideLayout, setHideLayout] = useState(false);
+  const [isQuotaExhausted, setIsQuotaExhausted] = useState(false);
 
   useEffect(() => {
+    const checkQuota = async () => {
+      try {
+        const res = await axios.get('/api/quota-status');
+        if (res.data.isQuotaExhausted) {
+          setIsQuotaExhausted(true);
+          toast.warning('App is in limited mode due to high traffic. Some features may be slow.', {
+            duration: 10000,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to check quota status:', err);
+      }
+    };
+    checkQuota();
+
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
@@ -78,6 +94,11 @@ export default function App() {
   return (
     <Router>
       <Toaster position="top-center" richColors />
+      {isQuotaExhausted && (
+        <div className="bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest py-1 text-center sticky top-0 z-[100] shadow-lg">
+          Limited Mode Active: Daily Quota Reached. Some data may be cached or unavailable.
+        </div>
+      )}
       <Layout user={user} hideHeaderFooter={hideLayout}>
         <Routes>
           <Route path="/" element={<Home />} />

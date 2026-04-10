@@ -101,6 +101,12 @@ try {
         return res.status(403).json({ error: 'Forbidden: User role only' });
       }
 
+      // Check custom claims first (no Firestore read)
+      if (decodedToken.role === 'admin' || decodedToken.email === 'admin@wasteswap.com') {
+        (req as any).user = decodedToken;
+        return next();
+      }
+
       // Check cache first
       const cached = adminCache.get(decodedToken.uid);
       if (cached && (Date.now() - cached.timestamp < ADMIN_CACHE_DURATION)) {
@@ -118,9 +124,17 @@ try {
         return next();
       }
 
+      if (isQuotaExhausted && (Date.now() - quotaExhaustedAt < QUOTA_COOLDOWN)) {
+        return res.status(403).json({ error: 'Forbidden: Quota limit reached' });
+      }
+
       try {
         const userDoc = await db.collection('users').doc(decodedToken.uid).get();
         const isUserAdmin = userDoc.data()?.role === 'admin';
+        
+        if (isUserAdmin) {
+          await admin.auth().setCustomUserClaims(decodedToken.uid, { role: 'admin' });
+        }
         
         adminCache.set(decodedToken.uid, { isAdmin: isUserAdmin, timestamp: Date.now() });
         
@@ -264,6 +278,14 @@ async function startServer() {
     res.json({ status: "ok", message: "Waste Swap Network API is running" });
   });
 
+  app.get("/api/quota-status", (req, res) => {
+    const active = isQuotaExhausted && (Date.now() - quotaExhaustedAt < QUOTA_COOLDOWN);
+    res.json({ 
+      isQuotaExhausted: active,
+      remainingCooldown: active ? Math.max(0, QUOTA_COOLDOWN - (Date.now() - quotaExhaustedAt)) : 0
+    });
+  });
+
   app.get("/api/auth/status", authenticate, async (req, res) => {
     const user = (req as any).user;
     const start = Date.now();
@@ -275,7 +297,9 @@ async function startServer() {
       }
 
       const isAdminEmail = user.email === 'admin@wasteswap.com';
-      if (isAdminEmail) {
+      
+      // Check for custom claims first (no Firestore read)
+      if (user.role === 'admin' || isAdminEmail) {
         adminCache.set(user.uid, { isAdmin: true, timestamp: Date.now() });
         return res.json({ role: 'admin' });
       }
@@ -286,6 +310,11 @@ async function startServer() {
 
       const userDoc = await db.collection('users').doc(user.uid).get();
       const role = userDoc.data()?.role || 'user';
+      
+      // Set custom claim to avoid future Firestore reads for this user
+      if (role === 'admin') {
+        await admin.auth().setCustomUserClaims(user.uid, { role: 'admin' });
+      }
       
       adminCache.set(user.uid, { isAdmin: role === 'admin', timestamp: Date.now() });
       
@@ -304,7 +333,7 @@ async function startServer() {
 
   // Cache for waste items
   let wasteItemsCache: { data: any, timestamp: number } | null = null;
-  const WASTE_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+  const WASTE_CACHE_DURATION = 30 * 1000; // Reduced to 30 seconds for better responsiveness during testing
 
   app.get("/api/waste-items", async (req, res) => {
     try {
@@ -321,6 +350,8 @@ async function startServer() {
       const { search, wasteType, minPrice, maxPrice, lat, lng, radius, page = 1, limit: limitParam = 12 } = req.query;
       const pageSize = Number(limitParam);
       const pageNum = Number(page);
+      
+      console.log(`Fetching waste items: search="${search || ''}", type="${wasteType || ''}", page=${pageNum}`);
       
       // Check cache (only for general queries without specific filters for simplicity)
       if (!search && !wasteType && !minPrice && !maxPrice && !lat && pageNum === 1 && wasteItemsCache && (Date.now() - wasteItemsCache.timestamp < WASTE_CACHE_DURATION)) {
@@ -344,8 +375,10 @@ async function startServer() {
 
         const snapshot = await query.get();
         items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        console.log(`Waste items query returned ${items.length} items`);
       } catch (queryError: any) {
         console.warn("Complex query failed, likely missing index. Falling back to simple query.", queryError.message);
+        handleQuotaError(queryError, 'waste-items-query');
         // Fallback: Simple query without complex ordering/filtering
         const fallbackSnapshot = await db.collection('wasteItems')
           .where('status', '==', 'available')
@@ -353,6 +386,7 @@ async function startServer() {
           .get();
         
         items = fallbackSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        console.log(`Waste items fallback query returned ${items.length} items`);
         
         // Manual sort by createdAt if available
         items.sort((a, b) => {

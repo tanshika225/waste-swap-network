@@ -40,12 +40,15 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
+        // Optimistic check based on email to unblock UI faster
+        setIsAdmin(u.email === 'admin@wasteswap.com');
+
         try {
           const idToken = await u.getIdToken();
-          // Add a timeout to the API call
+          // Increase timeout to 15 seconds to handle slow cold starts or Firestore delays
           const response = await axios.get('/api/auth/status', {
             headers: { Authorization: `Bearer ${idToken}` },
-            timeout: 5000 // 5 seconds timeout
+            timeout: 15000 
           });
           setIsAdmin(response.data.role === 'admin');
         } catch (err) {

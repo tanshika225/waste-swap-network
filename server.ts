@@ -266,6 +266,7 @@ async function startServer() {
 
   app.get("/api/auth/status", authenticate, async (req, res) => {
     const user = (req as any).user;
+    const start = Date.now();
     try {
       // Check cache first
       const cached = adminCache.get(user.uid);
@@ -287,9 +288,16 @@ async function startServer() {
       const role = userDoc.data()?.role || 'user';
       
       adminCache.set(user.uid, { isAdmin: role === 'admin', timestamp: Date.now() });
+      
+      const duration = Date.now() - start;
+      if (duration > 2000) {
+        console.warn(`Auth status check for ${user.email} took ${duration}ms`);
+      }
+      
       res.json({ role });
     } catch (error: any) {
       handleQuotaError(error, "auth-status");
+      console.error(`Auth status error for ${user.email}:`, error.message);
       res.json({ role: 'user' }); // Fallback
     }
   });

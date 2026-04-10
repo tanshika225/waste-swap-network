@@ -10,7 +10,20 @@ import { toast } from 'sonner';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [userProfile, setUserProfile] = useState<any>(null);
+  // Initialize with a default profile if user is already logged in to prevent stuck loading screen
+  const [userProfile, setUserProfile] = useState<any>(() => {
+    const user = auth.currentUser;
+    if (user) {
+      return {
+        uid: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
+        email: user.email,
+        role: 'user',
+        impact: { recycled: 0, reused: 0, co2Saved: 0 }
+      };
+    }
+    return null;
+  });
   const [myItems, setMyItems] = useState<any[]>([]);
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [receivedRequests, setReceivedRequests] = useState<any[]>([]);
@@ -20,233 +33,238 @@ export default function Dashboard() {
   const [quotaInfo, setQuotaInfo] = useState<any>(null);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const checkQuota = async () => {
-      try {
-        const res = await axios.get('/api/quota-status');
-        setQuotaInfo(res.data);
-      } catch (e) {
-        console.error('Failed to check quota status');
-      }
-    };
-    checkQuota();
-
-    // Fetch recommendations after profile (for location)
-    const fetchRecommendations = async (location?: any) => {
-      const cacheKey = `recs_${user.uid}`;
-      const cached = localStorage.getItem(cacheKey);
-      
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        // Use cache if it's less than 15 minutes old
-        if (Date.now() - timestamp < 15 * 60 * 1000) {
-          setRecommendations(data);
-          return;
-        }
-        // If older, still show it while loading
-        setRecommendations(data);
+    // Use onAuthStateChanged to ensure we have the user even if there's a slight delay
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        navigate('/login');
+        return;
       }
 
-      setLoadingRecs(true);
-      try {
-        const params: any = {};
-        if (location) {
-          params.lat = location.lat;
-          params.lng = location.lng;
-        }
-        const response = await axios.get('/api/recommendations', { 
-          params,
-          timeout: 10000
+      // If we didn't have a profile yet, set the optimistic one
+      if (!userProfile) {
+        setUserProfile({
+          uid: user.uid,
+          displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
+          email: user.email,
+          role: 'user',
+          impact: { recycled: 0, reused: 0, co2Saved: 0 }
         });
-        setRecommendations(response.data);
-        localStorage.setItem(cacheKey, JSON.stringify({
-          data: response.data,
-          timestamp: Date.now()
-        }));
-      } catch (err: any) {
-        console.error('Failed to fetch recommendations:', err);
-        if (err.response?.status === 500 || err.message?.includes('Quota') || err.code === 'ECONNABORTED') {
-          toast.error('Recommendations temporarily limited due to high traffic.', {
-            description: 'Showing previously cached data if available.'
-          });
-        }
-      } finally {
-        setLoadingRecs(false);
       }
-    };
-    
-    // Fetch user profile
-    const fetchProfile = async () => {
-      // Optimistically set a minimal profile so the dashboard loads immediately
-      const optimisticProfile = {
-        uid: user.uid,
-        displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
-        email: user.email,
-        role: 'user',
-        impact: { recycled: 0, reused: 0, co2Saved: 0 }
-      };
-      setUserProfile(optimisticProfile);
 
-      try {
-        const idToken = await user.getIdToken();
-        const response = await axios.get('/api/user/profile', {
-          headers: { Authorization: `Bearer ${idToken}` },
-          timeout: 6000 // 6 seconds timeout
-        });
-        const data = response.data;
-        setUserProfile(data);
-        fetchRecommendations(data.location);
-      } catch (err: any) {
-        console.error('Failed to fetch profile via API:', err);
-        
-        // Check if it's a quota error or timeout
-        const isQuota = err.message?.includes('quota') || err.response?.data?.error?.includes('Quota') || err.code === 'resource-exhausted';
-        const isTimeout = err.code === 'ECONNABORTED';
-        
-        if (isQuota || isTimeout) {
-          if (isQuota) setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
-          // We already set an optimistic profile, so just keep it
-          return;
-        }
-
-        // Fallback to direct Firestore if not a quota error or timeout
+      const checkQuota = async () => {
         try {
-          const docSnap = await getDoc(doc(db, 'users', user.uid));
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setUserProfile(data);
-            fetchRecommendations(data.location);
-          }
-          // If not exists, we already have the optimistic profile
-        } catch (fsErr: any) {
-          console.error('Direct Firestore profile fetch also failed:', fsErr);
-          // Already have optimistic profile
+          const res = await axios.get('/api/quota-status', { timeout: 5000 });
+          setQuotaInfo(res.data);
+        } catch (e) {
+          console.error('Failed to check quota status');
         }
-      }
-    };
-    fetchProfile();
+      };
+      checkQuota();
 
-    // Fetch my items
-    const fetchMyItems = async () => {
-      try {
-        const idToken = await user.getIdToken();
-        const response = await axios.get('/api/user/items', {
-          headers: { Authorization: `Bearer ${idToken}` },
-          timeout: 8000
-        });
-        setMyItems(response.data);
-      } catch (err) {
-        console.error('Failed to fetch items via API:', err);
-      }
-    };
-    fetchMyItems();
-
-    // Only set up listeners if quota is likely available
-    let unsubItems = () => {};
-    let unsubReqs = () => {};
-    let unsubRecv = () => {};
-
-    const setupListeners = async () => {
-      // Check quota status first
-      try {
-        const qStatus = await axios.get('/api/quota-status');
-        if (qStatus.data.isExhausted) {
-          console.warn('Quota exhausted, skipping real-time listeners');
-          return;
-        }
-      } catch (e) {
-        // If we can't even check quota, assume the worst or just proceed and let onSnapshot fail
-      }
-
-      const qItems = query(
-        collection(db, 'wasteItems'), 
-        where('ownerId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-      );
-      unsubItems = onSnapshot(qItems, (snap) => {
-        setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (error) => {
-        console.error('My Items Snapshot Error:', error);
-        if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
-          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
-        }
-      });
-
-      const qReqs = query(collection(db, 'swapRequests'), where('requesterId', '==', user.uid));
-      unsubReqs = onSnapshot(qReqs, (snap) => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        docs.sort((a: any, b: any) => {
-          const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
-          const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
-          return timeB - timeA;
-        });
-        setMyRequests(docs);
-      }, (error) => {
-        console.error('My Requests Snapshot Error:', error);
-        if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
-          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
-        }
-      });
-
-      const qRecv = query(collection(db, 'swapRequests'), where('ownerId', '==', user.uid));
-      unsubRecv = onSnapshot(qRecv, (snap) => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-        docs.sort((a: any, b: any) => {
-          const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
-          const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
-          return timeB - timeA;
-        });
-        setReceivedRequests(docs);
+      // Fetch recommendations after profile (for location)
+      const fetchRecommendations = async (location?: any) => {
+        const cacheKey = `recs_${user.uid}`;
+        const cached = localStorage.getItem(cacheKey);
         
-        const pendingIds = new Set<string>();
-        docs.forEach(req => {
-          if (req.status === 'pending') {
-            pendingIds.add(req.itemId);
+        if (cached) {
+          const { data, timestamp } = JSON.parse(cached);
+          // Use cache if it's less than 15 minutes old
+          if (Date.now() - timestamp < 15 * 60 * 1000) {
+            setRecommendations(data);
+            return;
           }
-        });
-        setPendingItemsIds(pendingIds);
-      }, (error) => {
-        console.error('Received Requests Snapshot Error:', error);
-        if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
-          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          // If older, still show it while loading
+          setRecommendations(data);
         }
-      });
-    };
 
-    setupListeners();
+        setLoadingRecs(true);
+        try {
+          const params: any = {};
+          if (location) {
+            params.lat = location.lat;
+            params.lng = location.lng;
+          }
+          const response = await axios.get('/api/recommendations', { 
+            params,
+            timeout: 10000
+          });
+          setRecommendations(response.data);
+          localStorage.setItem(cacheKey, JSON.stringify({
+            data: response.data,
+            timestamp: Date.now()
+          }));
+        } catch (err: any) {
+          console.error('Failed to fetch recommendations:', err);
+          if (err.response?.status === 500 || err.message?.includes('Quota') || err.code === 'ECONNABORTED') {
+            toast.error('Recommendations temporarily limited due to high traffic.', {
+              description: 'Showing previously cached data if available.'
+            });
+          }
+        } finally {
+          setLoadingRecs(false);
+        }
+      };
+      
+      // Fetch user profile
+      const fetchProfile = async () => {
+        try {
+          const idToken = await user.getIdToken();
+          const response = await axios.get('/api/user/profile', {
+            headers: { Authorization: `Bearer ${idToken}` },
+            timeout: 12000 // Increased timeout
+          });
+          const data = response.data;
+          setUserProfile(data);
+          fetchRecommendations(data.location);
+        } catch (err: any) {
+          console.error('Failed to fetch profile via API:', err);
+          
+          // Check if it's a quota error or timeout
+          const isQuota = err.message?.includes('quota') || err.response?.data?.error?.includes('Quota') || err.code === 'resource-exhausted';
+          const isTimeout = err.code === 'ECONNABORTED';
+          
+          if (isQuota || isTimeout) {
+            if (isQuota) setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+            return;
+          }
 
-    // Fetch requests via API as well
-    const fetchRequests = async () => {
-      try {
-        const idToken = await user.getIdToken();
-        const response = await axios.get('/api/user/requests', {
-          headers: { Authorization: `Bearer ${idToken}` },
-          timeout: 8000
-        });
-        setMyRequests(response.data.sent);
-        setReceivedRequests(response.data.received);
-        
-        const pendingIds = new Set<string>();
-        response.data.received.forEach((req: any) => {
-          if (req.status === 'pending') {
-            pendingIds.add(req.itemId);
+          // Fallback to direct Firestore if not a quota error or timeout
+          try {
+            const docSnap = await getDoc(doc(db, 'users', user.uid));
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setUserProfile(data);
+              fetchRecommendations(data.location);
+            }
+          } catch (fsErr: any) {
+            console.error('Direct Firestore profile fetch also failed:', fsErr);
+          }
+        }
+      };
+      fetchProfile();
+
+      // Fetch my items
+      const fetchMyItems = async () => {
+        try {
+          const idToken = await user.getIdToken();
+          const response = await axios.get('/api/user/items', {
+            headers: { Authorization: `Bearer ${idToken}` },
+            timeout: 12000
+          });
+          setMyItems(response.data);
+        } catch (err) {
+          console.error('Failed to fetch items via API:', err);
+        }
+      };
+      fetchMyItems();
+
+      // Only set up listeners if quota is likely available
+      let unsubItems = () => {};
+      let unsubReqs = () => {};
+      let unsubRecv = () => {};
+
+      const setupListeners = async () => {
+        // Check quota status first
+        try {
+          const qStatus = await axios.get('/api/quota-status');
+          if (qStatus.data.isExhausted) {
+            console.warn('Quota exhausted, skipping real-time listeners');
+            return;
+          }
+        } catch (e) {
+          // If we can't even check quota, assume the worst or just proceed and let onSnapshot fail
+        }
+
+        const qItems = query(
+          collection(db, 'wasteItems'), 
+          where('ownerId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
+        unsubItems = onSnapshot(qItems, (snap) => {
+          setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (error) => {
+          console.error('My Items Snapshot Error:', error);
+          if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
           }
         });
-        setPendingItemsIds(pendingIds);
-      } catch (err) {
-        console.error('Failed to fetch requests via API:', err);
-      }
-    };
-    fetchRequests();
 
-    return () => {
-      unsubItems();
-      unsubReqs();
-      unsubRecv();
-    };
-  }, []);
+        const qReqs = query(collection(db, 'swapRequests'), where('requesterId', '==', user.uid));
+        unsubReqs = onSnapshot(qReqs, (snap) => {
+          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
+            const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
+            return timeB - timeA;
+          });
+          setMyRequests(docs);
+        }, (error) => {
+          console.error('My Requests Snapshot Error:', error);
+          if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          }
+        });
+
+        const qRecv = query(collection(db, 'swapRequests'), where('ownerId', '==', user.uid));
+        unsubRecv = onSnapshot(qRecv, (snap) => {
+          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
+            const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
+            return timeB - timeA;
+          });
+          setReceivedRequests(docs);
+          
+          const pendingIds = new Set<string>();
+          docs.forEach(req => {
+            if (req.status === 'pending') {
+              pendingIds.add(req.itemId);
+            }
+          });
+          setPendingItemsIds(pendingIds);
+        }, (error) => {
+          console.error('Received Requests Snapshot Error:', error);
+          if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          }
+        });
+      };
+
+      setupListeners();
+
+      // Fetch requests via API as well
+      const fetchRequests = async () => {
+        try {
+          const idToken = await user.getIdToken();
+          const response = await axios.get('/api/user/requests', {
+            headers: { Authorization: `Bearer ${idToken}` },
+            timeout: 12000
+          });
+          setMyRequests(response.data.sent);
+          setReceivedRequests(response.data.received);
+          
+          const pendingIds = new Set<string>();
+          response.data.received.forEach((req: any) => {
+            if (req.status === 'pending') {
+              pendingIds.add(req.itemId);
+            }
+          });
+          setPendingItemsIds(pendingIds);
+        } catch (err) {
+          console.error('Failed to fetch requests via API:', err);
+        }
+      };
+      fetchRequests();
+
+      return () => {
+        unsubItems();
+        unsubReqs();
+        unsubRecv();
+      };
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
 
   const handleRequestAction = async (requestId: string, status: 'accepted' | 'rejected' | 'completed') => {
     try {

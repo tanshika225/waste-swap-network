@@ -318,30 +318,64 @@ async function startServer() {
         ]);
       }
 
-      const { wasteType, minPrice, maxPrice, lat, lng, radius, page = 1, limit: limitParam = 12 } = req.query;
+      const { search, wasteType, minPrice, maxPrice, lat, lng, radius, page = 1, limit: limitParam = 12 } = req.query;
       const pageSize = Number(limitParam);
       const pageNum = Number(page);
       
       // Check cache (only for general queries without specific filters for simplicity)
-      if (!wasteType && !minPrice && !maxPrice && !lat && pageNum === 1 && wasteItemsCache && (Date.now() - wasteItemsCache.timestamp < WASTE_CACHE_DURATION)) {
+      if (!search && !wasteType && !minPrice && !maxPrice && !lat && pageNum === 1 && wasteItemsCache && (Date.now() - wasteItemsCache.timestamp < WASTE_CACHE_DURATION)) {
         return res.json(wasteItemsCache.data);
       }
 
-      let query: admin.firestore.Query = db.collection('wasteItems')
-        .where('status', '==', 'available')
-        .orderBy('createdAt', 'desc');
-      
-      if (wasteType) {
-        query = query.where('category', '==', wasteType);
+      let items: any[] = [];
+      try {
+        let query: admin.firestore.Query = db.collection('wasteItems')
+          .where('status', '==', 'available')
+          .orderBy('createdAt', 'desc');
+        
+        if (wasteType) {
+          query = query.where('category', '==', wasteType);
+        }
+        
+        // If we are not using geo-filtering, we can use Firestore pagination
+        // If we ARE using geo-filtering, we have to fetch more and filter in memory
+        const fetchLimit = (lat && lng) ? 100 : pageSize * pageNum;
+        query = query.limit(fetchLimit);
+
+        const snapshot = await query.get();
+        items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      } catch (queryError: any) {
+        console.warn("Complex query failed, likely missing index. Falling back to simple query.", queryError.message);
+        // Fallback: Simple query without complex ordering/filtering
+        const fallbackSnapshot = await db.collection('wasteItems')
+          .where('status', '==', 'available')
+          .limit(200) // Fetch more for manual filtering
+          .get();
+        
+        items = fallbackSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        
+        // Manual sort by createdAt if available
+        items.sort((a, b) => {
+          const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        // Manual category filter
+        if (wasteType) {
+          items = items.filter(item => item.category === wasteType);
+        }
       }
       
-      // If we are not using geo-filtering, we can use Firestore pagination
-      // If we ARE using geo-filtering, we have to fetch more and filter in memory
-      const fetchLimit = (lat && lng) ? 100 : pageSize * pageNum;
-      query = query.limit(fetchLimit);
-
-      const snapshot = await query.get();
-      let items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      // Filter by search term
+      if (search) {
+        const s = String(search).toLowerCase();
+        items = items.filter(item => 
+          item.title?.toLowerCase().includes(s) || 
+          item.description?.toLowerCase().includes(s) ||
+          item.category?.toLowerCase().includes(s)
+        );
+      }
       
       // Filter by price range
       if (minPrice) {

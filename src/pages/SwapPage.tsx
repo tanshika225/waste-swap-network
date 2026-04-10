@@ -6,6 +6,7 @@ import { db, auth } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { Search, Navigation, Filter, X, ChevronDown, Loader2 } from 'lucide-react';
 import { getCurrentLocation, Location } from '../lib/location';
+import { toast } from 'sonner';
 
 const CATEGORIES = ["plastic", "paper", "metal", "glass", "organic", "other"];
 
@@ -46,6 +47,7 @@ export default function SwapPage() {
           page: isLoadMore ? page + 1 : 1,
           limit: 12
         };
+        if (debouncedSearch) params.search = debouncedSearch;
         if (wasteType) params.wasteType = wasteType;
         if (minPrice) params.minPrice = minPrice;
         if (maxPrice) params.maxPrice = maxPrice;
@@ -55,7 +57,10 @@ export default function SwapPage() {
           params.radius = radius;
         }
 
-        const response = await axios.get('/api/waste-items', { params });
+        const response = await axios.get('/api/waste-items', { 
+          params,
+          timeout: 10000 // 10s timeout
+        });
         const newItems = response.data;
         
         if (isLoadMore) {
@@ -75,7 +80,7 @@ export default function SwapPage() {
       }
     };
     fetchItems();
-  }, [wasteType, minPrice, maxPrice, useRadiusFilter, userLocation, radius]);
+  }, [debouncedSearch, wasteType, minPrice, maxPrice, useRadiusFilter, userLocation, radius]);
 
   const loadMore = async () => {
     if (loading || loadingMore || !hasMore) return;
@@ -86,6 +91,7 @@ export default function SwapPage() {
         page: page + 1,
         limit: 12
       };
+      if (debouncedSearch) params.search = debouncedSearch;
       if (wasteType) params.wasteType = wasteType;
       if (minPrice) params.minPrice = minPrice;
       if (maxPrice) params.maxPrice = maxPrice;
@@ -95,7 +101,10 @@ export default function SwapPage() {
         params.radius = radius;
       }
 
-      const response = await axios.get('/api/waste-items', { params });
+      const response = await axios.get('/api/waste-items', { 
+        params,
+        timeout: 10000
+      });
       const newItems = response.data;
       
       setItems(prev => [...prev, ...newItems]);
@@ -144,17 +153,16 @@ export default function SwapPage() {
   };
 
   const handleSwapRequest = (itemId: string) => {
-    if (!auth.currentUser) return alert('Please login to request a swap');
+    if (!auth.currentUser) {
+      toast.error('Please login to request a swap');
+      navigate('/login');
+      return;
+    }
     navigate(`/request-swap/${itemId}`);
   };
 
-  const filteredItems = items.filter(i => {
-    const matchesSearch = i.title.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
-                         i.category.toLowerCase().includes(debouncedSearch.toLowerCase());
-    return matchesSearch;
-  });
-
   const clearFilters = () => {
+    setSearch('');
     setWasteType('');
     setMinPrice('');
     setMaxPrice('');
@@ -308,7 +316,7 @@ export default function SwapPage() {
             <div key={i} className="bg-stone-100 animate-pulse rounded-3xl aspect-[3/4]"></div>
           ))
         ) : (
-          filteredItems.map(item => (
+          items.map(item => (
             <WasteCard key={item.id} item={item} onSwap={handleSwapRequest} />
           ))
         )}
@@ -333,9 +341,21 @@ export default function SwapPage() {
         </div>
       )}
 
-      {!loading && filteredItems.length === 0 && (
-          <div className="col-span-full py-20 text-center text-stone-400">
-            No items found matching your search.
+      {!loading && items.length === 0 && (
+          <div className="col-span-full py-20 text-center bg-white rounded-3xl border-2 border-dashed border-stone-100">
+            <div className="bg-stone-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8 text-stone-300" />
+            </div>
+            <h3 className="text-lg font-bold text-stone-900 mb-1">No items found</h3>
+            <p className="text-stone-500 text-sm mb-6 max-w-xs mx-auto">
+              We couldn't find any items matching your current filters or search.
+            </p>
+            <button 
+              onClick={clearFilters}
+              className="text-emerald-600 font-bold hover:underline text-sm"
+            >
+              Clear all filters
+            </button>
           </div>
         )}
     </div>

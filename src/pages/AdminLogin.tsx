@@ -17,7 +17,7 @@ export default function AdminLogin() {
   const checkAdminStatus = async (user: any) => {
     const userRef = doc(db, 'users', user.uid);
     const userSnap = await getDoc(userRef);
-    const isAdminEmail = user.email === 'jstanshika1402@gmail.com' || user.email === 'admin@wasteswap.com';
+    const isAdminEmail = user.email === 'admin@wasteswap.com';
 
     if (isAdminEmail || (userSnap.exists() && userSnap.data().role === 'admin')) {
       // If it's the admin email but role isn't set, update it

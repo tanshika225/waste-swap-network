@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { motion } from 'motion/react';
 import { ArrowRight, Recycle, Award, Package, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import WasteCard from '../components/WasteCard';
 import { toast } from 'sonner';
+import axios from 'axios';
 
 export default function RequestSwap() {
   const { itemId } = useParams();
@@ -49,32 +50,55 @@ export default function RequestSwap() {
       if (!itemId || !auth.currentUser) return;
 
       try {
-        // Fetch the item being requested
-        const itemDoc = await getDoc(doc(db, 'wasteItems', itemId));
-        if (itemDoc.exists()) {
-          const itemData = itemDoc.data();
-          setItem({ id: itemDoc.id, ...itemData });
-          
-          // Fetch the owner's profile
-          const ownerDoc = await getDoc(doc(db, 'users', itemData.ownerId));
-          if (ownerDoc.exists()) setOwner(ownerDoc.data());
-        }
+        // Fetch the item being requested via API
+        const itemRes = await axios.get(`/api/waste-items/${itemId}`);
+        const itemData = itemRes.data;
+        setItem(itemData);
+        
+        // Fetch the owner's profile via API
+        const ownerRes = await axios.get(`/api/users/${itemData.ownerId}`);
+        setOwner(ownerRes.data);
 
-        // Fetch requester's profile
-        const profileDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (profileDoc.exists()) setUserProfile(profileDoc.data());
+        // Fetch requester's profile via API
+        const idToken = await auth.currentUser.getIdToken();
+        const profileRes = await axios.get('/api/user/profile', {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+        setUserProfile(profileRes.data);
 
-        // Fetch requester's available items
-        const q = query(
-          collection(db, 'wasteItems'), 
-          where('ownerId', '==', auth.currentUser.uid),
-          where('status', '==', 'available')
-        );
-        const querySnapshot = await getDocs(q);
-        setMyItems(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        // Fetch requester's available items via API
+        const itemsRes = await axios.get('/api/user/items', {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+        setMyItems(itemsRes.data.filter((i: any) => i.status === 'available'));
 
       } catch (error) {
-        console.error('Error fetching swap data:', error);
+        console.error('Error fetching swap data via API, falling back to direct Firestore:', error);
+        
+        // Fallback to direct Firestore
+        try {
+          const itemDoc = await getDoc(doc(db, 'wasteItems', itemId));
+          if (itemDoc.exists()) {
+            const itemData = itemDoc.data();
+            setItem({ id: itemDoc.id, ...itemData });
+            
+            const ownerDoc = await getDoc(doc(db, 'users', itemData.ownerId));
+            if (ownerDoc.exists()) setOwner(ownerDoc.data());
+          }
+
+          const profileDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+          if (profileDoc.exists()) setUserProfile(profileDoc.data());
+
+          const q = query(
+            collection(db, 'wasteItems'), 
+            where('ownerId', '==', auth.currentUser.uid),
+            where('status', '==', 'available')
+          );
+          const querySnapshot = await getDocs(q);
+          setMyItems(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (fsError) {
+          console.error('Firestore fallback also failed:', fsError);
+        }
       } finally {
         setLoading(false);
       }
@@ -125,6 +149,11 @@ export default function RequestSwap() {
         pickupLocation,
         createdAt: serverTimestamp()
       });
+
+      // Increment request count on the waste item
+      await updateDoc(doc(db, 'wasteItems', item.id), {
+        requestCount: increment(1)
+      }).catch(err => console.error('Failed to increment request count:', err));
       
       // Call the schedule-pickup API
       await fetch('/api/schedule-pickup', {

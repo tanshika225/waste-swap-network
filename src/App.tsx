@@ -25,6 +25,7 @@ import ManageWaste from './pages/admin/ManageWaste';
 import Analytics from './pages/admin/Analytics';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import axios from 'axios';
 
 import { Toaster } from 'sonner';
 
@@ -38,9 +39,17 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        const userDoc = await getDoc(doc(db, 'users', u.uid));
-        const isAdminEmail = u.email === 'jstanshika1402@gmail.com' || u.email === 'admin@wasteswap.com';
-        setIsAdmin(isAdminEmail || (userDoc.exists() && userDoc.data().role === 'admin'));
+        try {
+          const idToken = await u.getIdToken();
+          const response = await axios.get('/api/auth/status', {
+            headers: { Authorization: `Bearer ${idToken}` }
+          });
+          setIsAdmin(response.data.role === 'admin');
+        } catch (err) {
+          console.error('Failed to fetch auth status via API:', err);
+          // Fallback to hardcoded admin email if API fails
+          setIsAdmin(u.email === 'admin@wasteswap.com');
+        }
       } else {
         setIsAdmin(false);
       }

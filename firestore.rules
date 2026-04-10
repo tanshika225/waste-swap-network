@@ -13,7 +13,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email in ["jstanshika1402@gmail.com", "admin@wasteswap.com"]));
+         (request.auth.token.email == "admin@wasteswap.com"));
     }
     function isNotBlocked() {
       return !('blocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || 
@@ -39,10 +39,10 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && 
         (request.resource.data.role == 'user' || 
-         (request.auth.token.email in ["jstanshika1402@gmail.com", "admin@wasteswap.com"] && request.resource.data.role == 'admin'));
+         (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.role == 'admin'));
       allow update: if (isOwner(userId) && 
         (request.resource.data.role == resource.data.role || 
-         (request.auth.token.email in ["jstanshika1402@gmail.com", "admin@wasteswap.com"] && request.resource.data.role == 'admin')) 
+         (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.role == 'admin')) 
         && isNotBlocked()) || isAdmin();
     }
 
@@ -57,7 +57,12 @@ service cloud.firestore {
         request.resource.data.estimatedValue >= 0 &&
         request.resource.data.isBiodegradable is bool &&
         request.resource.data.estimatedWeightKg is number;
-      allow update: if isAuthorized() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow update: if isAuthorized() && (
+        resource.data.ownerId == request.auth.uid || 
+        isAdmin() || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestCount']) && 
+         request.resource.data.requestCount == resource.data.requestCount + 1)
+      );
       allow delete: if isAuthorized() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 

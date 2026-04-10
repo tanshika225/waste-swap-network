@@ -19,7 +19,7 @@ export default function Login() {
     const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists()) {
-      const isAdminEmail = user.email === 'jstanshika1402@gmail.com' || user.email === 'admin@wasteswap.com';
+      const isAdminEmail = user.email === 'admin@wasteswap.com';
       await setDoc(userRef, {
         uid: user.uid,
         displayName: user.displayName || user.email.split('@')[0],

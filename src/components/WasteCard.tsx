@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Tag, User, Leaf, Scale, MessageSquare } from 'lucide-react';
+import { MapPin, Tag, User, Leaf, Scale, MessageSquare, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface WasteItem {
@@ -14,6 +14,7 @@ interface WasteItem {
   isBiodegradable?: boolean;
   estimatedWeightKg?: number;
   location?: { lat: number; lng: number };
+  requestCount?: number;
 }
 
 export default function WasteCard({ item, onSwap, hasPendingRequest, onRequestClick }: { item: any; onSwap?: (id: string) => void; hasPendingRequest?: boolean; onRequestClick?: () => void; key?: any }) {
@@ -58,6 +59,12 @@ export default function WasteCard({ item, onSwap, hasPendingRequest, onRequestCl
             }`}>
               <Leaf className="w-2 h-2" />
               {item.isBiodegradable ? 'Bio' : 'Non-Bio'}
+            </span>
+          )}
+          {item.requestCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-100 text-amber-700 uppercase tracking-wider shadow-sm flex items-center gap-1">
+              <Users className="w-2 h-2" />
+              {item.requestCount} {item.requestCount === 1 ? 'Request' : 'Requests'}
             </span>
           )}
         </div>

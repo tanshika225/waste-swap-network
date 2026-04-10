@@ -76,87 +76,143 @@ export default function Dashboard() {
     
     // Fetch user profile
     const fetchProfile = async () => {
-      const docSnap = await getDoc(doc(db, 'users', user.uid));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+      try {
+        const idToken = await user.getIdToken();
+        const response = await axios.get('/api/user/profile', {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = response.data;
         setUserProfile(data);
         fetchRecommendations(data.location);
+      } catch (err) {
+        console.error('Failed to fetch profile via API:', err);
+        // Only fallback to direct Firestore if not a quota error
+        if (!(err as any).message?.includes('quota') && !(err as any).response?.data?.error?.includes('Quota')) {
+          try {
+            const docSnap = await getDoc(doc(db, 'users', user.uid));
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setUserProfile(data);
+              fetchRecommendations(data.location);
+            }
+          } catch (fsErr) {
+            console.error('Direct Firestore profile fetch also failed:', fsErr);
+          }
+        }
       }
     };
     fetchProfile();
 
     // Fetch my items
-    const qItems = query(
-      collection(db, 'wasteItems'), 
-      where('ownerId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-    const unsubItems = onSnapshot(qItems, (snap) => {
-      setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      console.error('My Items Snapshot Error:', error);
-      if (error.message?.includes('quota')) {
-        setQuotaInfo(prev => ({ ...prev, isExhausted: true }));
-      }
-      // Fallback: if index is missing, fetch without order and sort client-side
-      if (error.message?.includes('index')) {
-        const qFallback = query(collection(db, 'wasteItems'), where('ownerId', '==', user.uid));
-        onSnapshot(qFallback, (snap) => {
-          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          docs.sort((a: any, b: any) => {
-            const timeA = a.createdAt?.seconds || 0;
-            const timeB = b.createdAt?.seconds || 0;
-            return timeB - timeA;
-          });
-          setMyItems(docs);
+    const fetchMyItems = async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const response = await axios.get('/api/user/items', {
+          headers: { Authorization: `Bearer ${idToken}` }
         });
+        setMyItems(response.data);
+      } catch (err) {
+        console.error('Failed to fetch items via API:', err);
       }
-    });
+    };
+    fetchMyItems();
 
-    // Fetch my requests (sent)
-    const qReqs = query(collection(db, 'swapRequests'), where('requesterId', '==', user.uid));
-    const unsubReqs = onSnapshot(qReqs, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Sort client-side: recent top, older down (descending)
-      docs.sort((a: any, b: any) => {
-        const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
-        const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
-        return timeB - timeA;
-      });
-      setMyRequests(docs);
-    }, (error) => {
-      console.error('My Requests Snapshot Error:', error);
-      if (error.message?.includes('quota')) {
-        setQuotaInfo(prev => ({ ...prev, isExhausted: true }));
+    // Only set up listeners if quota is likely available
+    let unsubItems = () => {};
+    let unsubReqs = () => {};
+    let unsubRecv = () => {};
+
+    const setupListeners = async () => {
+      // Check quota status first
+      try {
+        const qStatus = await axios.get('/api/quota-status');
+        if (qStatus.data.isExhausted) {
+          console.warn('Quota exhausted, skipping real-time listeners');
+          return;
+        }
+      } catch (e) {
+        // If we can't even check quota, assume the worst or just proceed and let onSnapshot fail
       }
-    });
 
-    // Fetch received requests
-    const qRecv = query(collection(db, 'swapRequests'), where('ownerId', '==', user.uid));
-    const unsubRecv = onSnapshot(qRecv, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      // Sort client-side: recent top, older down (descending)
-      docs.sort((a: any, b: any) => {
-        const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
-        const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
-        return timeB - timeA;
-      });
-      setReceivedRequests(docs);
-      
-      // Track items with pending requests
-      const pendingIds = new Set<string>();
-      docs.forEach(req => {
-        if (req.status === 'pending') {
-          pendingIds.add(req.itemId);
+      const qItems = query(
+        collection(db, 'wasteItems'), 
+        where('ownerId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
+      unsubItems = onSnapshot(qItems, (snap) => {
+        setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }, (error) => {
+        console.error('My Items Snapshot Error:', error);
+        if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
         }
       });
-      setPendingItemsIds(pendingIds);
-    }, (error) => {
-      console.error('Received Requests Snapshot Error:', error);
-      if (error.message?.includes('quota')) {
-        setQuotaInfo(prev => ({ ...prev, isExhausted: true }));
+
+      const qReqs = query(collection(db, 'swapRequests'), where('requesterId', '==', user.uid));
+      unsubReqs = onSnapshot(qReqs, (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        docs.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
+          const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
+          return timeB - timeA;
+        });
+        setMyRequests(docs);
+      }, (error) => {
+        console.error('My Requests Snapshot Error:', error);
+        if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+        }
+      });
+
+      const qRecv = query(collection(db, 'swapRequests'), where('ownerId', '==', user.uid));
+      unsubRecv = onSnapshot(qRecv, (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+        docs.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds || (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
+          const timeB = b.createdAt?.seconds || (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
+          return timeB - timeA;
+        });
+        setReceivedRequests(docs);
+        
+        const pendingIds = new Set<string>();
+        docs.forEach(req => {
+          if (req.status === 'pending') {
+            pendingIds.add(req.itemId);
+          }
+        });
+        setPendingItemsIds(pendingIds);
+      }, (error) => {
+        console.error('Received Requests Snapshot Error:', error);
+        if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+        }
+      });
+    };
+
+    setupListeners();
+
+    // Fetch requests via API as well
+    const fetchRequests = async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const response = await axios.get('/api/user/requests', {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+        setMyRequests(response.data.sent);
+        setReceivedRequests(response.data.received);
+        
+        const pendingIds = new Set<string>();
+        response.data.received.forEach((req: any) => {
+          if (req.status === 'pending') {
+            pendingIds.add(req.itemId);
+          }
+        });
+        setPendingItemsIds(pendingIds);
+      } catch (err) {
+        console.error('Failed to fetch requests via API:', err);
       }
-    });
+    };
+    fetchRequests();
 
     return () => {
       unsubItems();

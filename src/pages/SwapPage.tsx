@@ -23,6 +23,14 @@ export default function SwapPage() {
   const [maxPrice, setMaxPrice] = useState('');
   const [radius, setRadius] = useState('5');
   const [useRadiusFilter, setUseRadiusFilter] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -90,8 +98,8 @@ export default function SwapPage() {
   };
 
   const filteredItems = items.filter(i => {
-    const matchesSearch = i.title.toLowerCase().includes(search.toLowerCase()) || 
-                         i.category.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = i.title.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
+                         i.category.toLowerCase().includes(debouncedSearch.toLowerCase());
     return matchesSearch;
   });
 

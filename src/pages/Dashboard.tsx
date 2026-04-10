@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment
 import { auth, db } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
-import { Leaf, Award, TrendingUp, Package, ArrowRight, MessageSquare, Star, MapPin, Zap } from 'lucide-react';
+import { Leaf, Award, TrendingUp, Package, ArrowRight, MessageSquare, Star, MapPin, Zap, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -296,13 +296,21 @@ export default function Dashboard() {
     return new Date(timestamp).toLocaleDateString();
   };
 
-  if (!userProfile) return <div className="py-20 text-center">Loading your impact...</div>;
+  if (!userProfile) return (
+    <div className="py-20 text-center flex flex-col items-center gap-4">
+      <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
+      <div className="text-stone-500 font-medium">Loading your impact...</div>
+      <p className="text-xs text-stone-400 max-w-xs mx-auto">If this takes too long, please try refreshing or checking your connection.</p>
+    </div>
+  );
+
+  const impact = userProfile.impact || { recycled: 0, reused: 0, co2Saved: 0 };
 
   return (
     <div className="space-y-10">
       <header>
         <h1 className="text-4xl font-bold text-stone-900">Dashboard</h1>
-        <p className="text-stone-500">Welcome back, {userProfile.displayName}</p>
+        <p className="text-stone-500">Welcome back, {userProfile.displayName || 'Swapper'}</p>
       </header>
 
       {quotaInfo?.isExhausted && (
@@ -322,8 +330,8 @@ export default function Dashboard() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {[
-          { label: "Items Reused", value: userProfile.impact.reused, icon: Package, color: "text-emerald-600", bg: "bg-emerald-100" },
-          { label: "CO2 Saved", value: `${userProfile.impact.co2Saved}kg`, icon: Leaf, color: "text-blue-600", bg: "bg-blue-100" },
+          { label: "Items Reused", value: impact.reused || 0, icon: Package, color: "text-emerald-600", bg: "bg-emerald-100" },
+          { label: "CO2 Saved", value: `${impact.co2Saved || 0}kg`, icon: Leaf, color: "text-blue-600", bg: "bg-blue-100" },
           { label: "Rank", value: "#12", icon: TrendingUp, color: "text-purple-600", bg: "bg-purple-100" },
           { label: "Impact", value: "Hero", icon: Award, color: "text-amber-600", bg: "bg-amber-100" }
         ].map((stat, i) => (

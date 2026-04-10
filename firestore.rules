@@ -14,12 +14,11 @@ service cloud.firestore {
       return isAuthenticated() && 
         (request.auth.token.email == "admin@wasteswap.com" || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'));
     }
     function isNotBlocked() {
       return !exists(/databases/$(database)/documents/users/$(request.auth.uid)) || 
-             !('blocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.blocked == false;
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('blocked', false) == false;
     }
     function isAuthorized() {
       return isAuthenticated() && (isNotBlocked() || isAdmin());
@@ -38,13 +37,13 @@ service cloud.firestore {
     // User Rules
     // ===============================================================
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && 
-        (request.resource.data.role == 'user' || 
-         (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.role == 'admin'));
+        (request.resource.data.get('role', 'user') == 'user' || 
+         (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.get('role', 'user') == 'admin'));
       allow update: if (isOwner(userId) && 
-        (request.resource.data.role == resource.data.role || 
-         (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.role == 'admin')) 
+        (request.resource.data.get('role', 'user') == resource.data.get('role', 'user') || 
+         (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.get('role', 'user') == 'admin'))
         && isNotBlocked()) || isAdmin() ||
         // Allow updating impact stats
         (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['impact']));

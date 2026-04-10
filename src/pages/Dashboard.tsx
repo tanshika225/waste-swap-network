@@ -84,20 +84,51 @@ export default function Dashboard() {
         const data = response.data;
         setUserProfile(data);
         fetchRecommendations(data.location);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch profile via API:', err);
-        // Only fallback to direct Firestore if not a quota error
-        if (!(err as any).message?.includes('quota') && !(err as any).response?.data?.error?.includes('Quota')) {
-          try {
-            const docSnap = await getDoc(doc(db, 'users', user.uid));
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              setUserProfile(data);
-              fetchRecommendations(data.location);
-            }
-          } catch (fsErr) {
-            console.error('Direct Firestore profile fetch also failed:', fsErr);
+        
+        // Check if it's a quota error
+        const isQuota = err.message?.includes('quota') || err.response?.data?.error?.includes('Quota') || err.code === 'resource-exhausted';
+        
+        if (isQuota) {
+          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          // Set a minimal profile so the dashboard still loads
+          setUserProfile({
+            uid: user.uid,
+            displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
+            email: user.email,
+            role: 'user',
+            impact: { recycled: 0, reused: 0, co2Saved: 0 }
+          });
+          return;
+        }
+
+        // Fallback to direct Firestore if not a quota error
+        try {
+          const docSnap = await getDoc(doc(db, 'users', user.uid));
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUserProfile(data);
+            fetchRecommendations(data.location);
+          } else {
+            // Profile doesn't exist yet, use a default one so dashboard loads
+            setUserProfile({
+              uid: user.uid,
+              displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
+              email: user.email,
+              role: 'user',
+              impact: { recycled: 0, reused: 0, co2Saved: 0 }
+            });
+            fetchRecommendations();
           }
+        } catch (fsErr: any) {
+          console.error('Direct Firestore profile fetch also failed:', fsErr);
+          // Even if Firestore fails, set a minimal profile to unblock the UI
+          setUserProfile({
+            uid: user.uid,
+            displayName: user.displayName || 'Swapper',
+            impact: { recycled: 0, reused: 0, co2Saved: 0 }
+          });
         }
       }
     };
@@ -465,13 +496,13 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 md:gap-4 bg-stone-50 p-3 md:p-4 rounded-2xl border border-stone-100">
                   <div className="flex-1 text-center min-w-0">
                     <div className="text-[9px] md:text-[10px] uppercase font-bold text-stone-400 mb-1">They Want</div>
-                    <div className="font-bold text-stone-900 text-xs md:text-sm truncate">Item #{req.itemId.slice(0, 6)}</div>
+                    <div className="font-bold text-stone-900 text-xs md:text-sm truncate">{req.itemTitle || `Item #${req.itemId.slice(0, 6)}`}</div>
                   </div>
                   <ArrowRight className="w-3 h-3 md:w-4 md:h-4 text-emerald-600 shrink-0" />
                   <div className="flex-1 text-center min-w-0">
                     <div className="text-[9px] md:text-[10px] uppercase font-bold text-stone-400 mb-1">They Offer</div>
                     <div className="font-bold text-emerald-600 text-xs md:text-sm truncate">
-                      {req.offeredItemId ? `Item #${req.offeredItemId.slice(0, 6)}` : `₹${req.offeredRupees}`}
+                      {req.offeredItemId ? (req.offeredItemTitle || `Item #${req.offeredItemId.slice(0, 6)}`) : `₹${req.offeredRupees}`}
                     </div>
                   </div>
                 </div>
@@ -569,13 +600,13 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 md:gap-4 bg-stone-50 p-3 md:p-4 rounded-2xl border border-stone-100">
                   <div className="flex-1 text-center min-w-0">
                     <div className="text-[9px] md:text-[10px] uppercase font-bold text-stone-400 mb-1">Requested</div>
-                    <div className="font-bold text-stone-900 text-xs md:text-sm truncate">Item #{req.itemId.slice(0, 6)}</div>
+                    <div className="font-bold text-stone-900 text-xs md:text-sm truncate">{req.itemTitle || `Item #${req.itemId.slice(0, 6)}`}</div>
                   </div>
                   <ArrowRight className="w-3 h-3 md:w-4 md:h-4 text-emerald-600 shrink-0" />
                   <div className="flex-1 text-center min-w-0">
                     <div className="text-[9px] md:text-[10px] uppercase font-bold text-stone-400 mb-1">Offered</div>
                     <div className="font-bold text-emerald-600 text-xs md:text-sm truncate">
-                      {req.offeredItemId ? `Item #${req.offeredItemId.slice(0, 6)}` : `₹${req.offeredRupees}`}
+                      {req.offeredItemId ? (req.offeredItemTitle || `Item #${req.offeredItemId.slice(0, 6)}`) : `₹${req.offeredRupees}`}
                     </div>
                   </div>
                 </div>

@@ -56,7 +56,10 @@ export default function Dashboard() {
           params.lat = location.lat;
           params.lng = location.lng;
         }
-        const response = await axios.get('/api/recommendations', { params });
+        const response = await axios.get('/api/recommendations', { 
+          params,
+          timeout: 10000
+        });
         setRecommendations(response.data);
         localStorage.setItem(cacheKey, JSON.stringify({
           data: response.data,
@@ -64,7 +67,7 @@ export default function Dashboard() {
         }));
       } catch (err: any) {
         console.error('Failed to fetch recommendations:', err);
-        if (err.response?.status === 500 || err.message?.includes('Quota')) {
+        if (err.response?.status === 500 || err.message?.includes('Quota') || err.code === 'ECONNABORTED') {
           toast.error('Recommendations temporarily limited due to high traffic.', {
             description: 'Showing previously cached data if available.'
           });
@@ -76,10 +79,21 @@ export default function Dashboard() {
     
     // Fetch user profile
     const fetchProfile = async () => {
+      // Optimistically set a minimal profile so the dashboard loads immediately
+      const optimisticProfile = {
+        uid: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
+        email: user.email,
+        role: 'user',
+        impact: { recycled: 0, reused: 0, co2Saved: 0 }
+      };
+      setUserProfile(optimisticProfile);
+
       try {
         const idToken = await user.getIdToken();
         const response = await axios.get('/api/user/profile', {
-          headers: { Authorization: `Bearer ${idToken}` }
+          headers: { Authorization: `Bearer ${idToken}` },
+          timeout: 6000 // 6 seconds timeout
         });
         const data = response.data;
         setUserProfile(data);
@@ -87,48 +101,28 @@ export default function Dashboard() {
       } catch (err: any) {
         console.error('Failed to fetch profile via API:', err);
         
-        // Check if it's a quota error
+        // Check if it's a quota error or timeout
         const isQuota = err.message?.includes('quota') || err.response?.data?.error?.includes('Quota') || err.code === 'resource-exhausted';
+        const isTimeout = err.code === 'ECONNABORTED';
         
-        if (isQuota) {
-          setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
-          // Set a minimal profile so the dashboard still loads
-          setUserProfile({
-            uid: user.uid,
-            displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
-            email: user.email,
-            role: 'user',
-            impact: { recycled: 0, reused: 0, co2Saved: 0 }
-          });
+        if (isQuota || isTimeout) {
+          if (isQuota) setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          // We already set an optimistic profile, so just keep it
           return;
         }
 
-        // Fallback to direct Firestore if not a quota error
+        // Fallback to direct Firestore if not a quota error or timeout
         try {
           const docSnap = await getDoc(doc(db, 'users', user.uid));
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUserProfile(data);
             fetchRecommendations(data.location);
-          } else {
-            // Profile doesn't exist yet, use a default one so dashboard loads
-            setUserProfile({
-              uid: user.uid,
-              displayName: user.displayName || user.email?.split('@')[0] || 'Swapper',
-              email: user.email,
-              role: 'user',
-              impact: { recycled: 0, reused: 0, co2Saved: 0 }
-            });
-            fetchRecommendations();
           }
+          // If not exists, we already have the optimistic profile
         } catch (fsErr: any) {
           console.error('Direct Firestore profile fetch also failed:', fsErr);
-          // Even if Firestore fails, set a minimal profile to unblock the UI
-          setUserProfile({
-            uid: user.uid,
-            displayName: user.displayName || 'Swapper',
-            impact: { recycled: 0, reused: 0, co2Saved: 0 }
-          });
+          // Already have optimistic profile
         }
       }
     };
@@ -139,7 +133,8 @@ export default function Dashboard() {
       try {
         const idToken = await user.getIdToken();
         const response = await axios.get('/api/user/items', {
-          headers: { Authorization: `Bearer ${idToken}` }
+          headers: { Authorization: `Bearer ${idToken}` },
+          timeout: 8000
         });
         setMyItems(response.data);
       } catch (err) {
@@ -227,7 +222,8 @@ export default function Dashboard() {
       try {
         const idToken = await user.getIdToken();
         const response = await axios.get('/api/user/requests', {
-          headers: { Authorization: `Bearer ${idToken}` }
+          headers: { Authorization: `Bearer ${idToken}` },
+          timeout: 8000
         });
         setMyRequests(response.data.sent);
         setReceivedRequests(response.data.received);

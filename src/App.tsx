@@ -42,13 +42,15 @@ export default function App() {
       if (u) {
         try {
           const idToken = await u.getIdToken();
+          // Add a timeout to the API call
           const response = await axios.get('/api/auth/status', {
-            headers: { Authorization: `Bearer ${idToken}` }
+            headers: { Authorization: `Bearer ${idToken}` },
+            timeout: 5000 // 5 seconds timeout
           });
           setIsAdmin(response.data.role === 'admin');
         } catch (err) {
           console.error('Failed to fetch auth status via API:', err);
-          // Fallback to hardcoded admin email if API fails
+          // Fallback to hardcoded admin email if API fails or times out
           setIsAdmin(u.email === 'admin@wasteswap.com');
         }
       } else {

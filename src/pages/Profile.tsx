@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
-import { User, Mail, Shield, Calendar, Award } from 'lucide-react';
+import { User, Mail, Shield, Calendar, Award, CreditCard, Edit2, Save, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Profile() {
   const [profile, setProfile] = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({ displayName: '', upiId: '' });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -13,7 +17,14 @@ export default function Profile() {
 
     // Real-time profile listener
     const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snap) => {
-      if (snap.exists()) setProfile(snap.data());
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfile(data);
+        setEditData({ 
+          displayName: data.displayName || '', 
+          upiId: data.upiId || '' 
+        });
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
     });
@@ -42,21 +53,87 @@ export default function Profile() {
     return new Date(timestamp).toLocaleDateString();
   };
 
+  const handleSave = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    if (!editData.displayName.trim()) {
+      toast.error("Display name is required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName: editData.displayName,
+        upiId: editData.upiId
+      });
+      toast.success("Profile updated successfully!");
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error("Update Profile Error:", error);
+      toast.error("Failed to update profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!profile) return <div className="py-20 text-center">Loading profile...</div>;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 md:gap-10">
       <div className="lg:col-span-2 space-y-6 md:space-y-8">
-        <section className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm">
+        <section className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm relative">
+          <div className="absolute top-6 right-6">
+            {!isEditing ? (
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+              >
+                <Edit2 className="w-5 h-5" />
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all disabled:opacity-50"
+                >
+                  {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8 text-center sm:text-left">
             <div className="w-20 h-20 md:w-24 md:h-24 bg-emerald-100 rounded-3xl flex items-center justify-center text-emerald-600 shrink-0">
               <User className="w-10 h-10 md:w-12 md:h-12" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl md:text-3xl font-bold text-stone-900 truncate">{profile.displayName}</h1>
-              <p className="text-sm md:text-base text-stone-500 flex items-center justify-center sm:justify-start gap-1 truncate">
-                <Mail className="w-4 h-4" /> {profile.email}
-              </p>
+            <div className="min-w-0 w-full sm:w-auto">
+              {isEditing ? (
+                <div className="space-y-2 mt-2">
+                  <label className="text-[10px] text-stone-400 uppercase font-bold">Display Name</label>
+                  <input 
+                    type="text"
+                    value={editData.displayName}
+                    onChange={(e) => setEditData({ ...editData, displayName: e.target.value })}
+                    className="w-full sm:w-64 p-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                  />
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-2xl md:text-3xl font-bold text-stone-900 truncate">{profile.displayName}</h1>
+                  <p className="text-sm md:text-base text-stone-500 flex items-center justify-center sm:justify-start gap-1 truncate">
+                    <Mail className="w-4 h-4" /> {profile.email}
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -73,6 +150,23 @@ export default function Profile() {
               <div>
                 <div className="text-[10px] text-stone-400 uppercase font-bold">Joined</div>
                 <div className="font-bold text-sm md:text-base">{formatDate(profile.createdAt)}</div>
+              </div>
+            </div>
+            <div className="p-4 bg-stone-50 rounded-2xl flex items-center gap-3 sm:col-span-2">
+              <CreditCard className="w-5 h-5 text-emerald-600 shrink-0" />
+              <div className="w-full">
+                <div className="text-[10px] text-stone-400 uppercase font-bold">UPI ID (For Receiving Payments)</div>
+                {isEditing ? (
+                  <input 
+                    type="text"
+                    value={editData.upiId}
+                    onChange={(e) => setEditData({ ...editData, upiId: e.target.value })}
+                    placeholder="e.g. yourname@upi"
+                    className="w-full mt-1 p-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-sm"
+                  />
+                ) : (
+                  <div className="font-bold text-sm md:text-base">{profile.upiId || 'Not set (Required for sellers)'}</div>
+                )}
               </div>
             </div>
           </div>

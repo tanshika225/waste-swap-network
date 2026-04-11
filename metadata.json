@@ -1,6 +1,6 @@
 {
   "name": "Waste Swap Network",
-  "description": "An advanced circular economy platform for Chennai featuring AI-powered waste segregation, condition assessment, repairability analysis, and a bilingual voice-activated Eco Assistant.",
+  "description": "An advanced circular economy platform for Chennai featuring AI-powered waste segregation, P2P UPI payments, condition assessment, repairability analysis, and a bilingual voice-activated Eco Assistant.",
   "requestFramePermissions": [
     "geolocation",
     "camera"

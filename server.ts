@@ -190,6 +190,18 @@ async function startServer() {
       handleQuotaError(error, "user-profile");
       const cached = userProfileCache.get(user.uid);
       if (cached) return res.json(cached.data);
+      
+      const isQuota = error.message?.includes('RESOURCE_EXHAUSTED') || error.code === 8 || error.details?.includes('Quota exceeded');
+      if (isQuota) {
+        return res.json({ 
+          uid: user.uid, 
+          displayName: user.name || 'User', 
+          email: user.email,
+          impact: { recycled: 0, reused: 0, co2Saved: 0 },
+          role: 'user',
+          isLimited: true
+        });
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -215,6 +227,10 @@ async function startServer() {
       handleQuotaError(error, "user-items");
       const cached = userItemsCache.get(user.uid);
       if (cached) return res.json(cached.data);
+      
+      const isQuota = error.message?.includes('RESOURCE_EXHAUSTED') || error.code === 8 || error.details?.includes('Quota exceeded');
+      if (isQuota) return res.json([]); // Return empty list instead of 500
+      
       res.status(500).json({ error: error.message });
     }
   });
@@ -242,6 +258,10 @@ async function startServer() {
       handleQuotaError(error, "user-requests");
       const cached = userRequestsCache.get(user.uid);
       if (cached) return res.json(cached.data);
+      
+      const isQuota = error.message?.includes('RESOURCE_EXHAUSTED') || error.code === 8 || error.details?.includes('Quota exceeded');
+      if (isQuota) return res.json({ sent: [], received: [] });
+      
       res.status(500).json({ error: error.message });
     }
   });
@@ -595,21 +615,23 @@ async function startServer() {
   });
 
   app.post("/api/payments/confirm", authenticate, async (req, res) => {
-    const { requestId, amount, wasteId } = req.body;
+    const { requestId, amount, wasteId, sellerId, screenshotUrl } = req.body;
     const user = (req as any).user;
 
-    if (!requestId) {
-      return res.status(400).json({ error: "Missing requestId" });
+    if (!requestId || !sellerId) {
+      return res.status(400).json({ error: "Missing requestId or sellerId" });
     }
 
     try {
       // Save payment record
       await db.collection('payments').add({
         userId: user.uid,
+        sellerId: sellerId,
         wasteId: wasteId || null,
         requestId: requestId,
         amount: amount,
         status: 'completed',
+        screenshotUrl: screenshotUrl || null,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 

@@ -37,7 +37,7 @@ service cloud.firestore {
     // User Rules
     // ===============================================================
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isAuthenticated(); // Allow authenticated users to see profiles (for UPI IDs)
       allow create: if isOwner(userId) && 
         (request.resource.data.get('role', 'user') == 'user' || 
          (request.auth.token.email == "admin@wasteswap.com" && request.resource.data.get('role', 'user') == 'admin'));
@@ -47,6 +47,14 @@ service cloud.firestore {
         && isNotBlocked()) || isAdmin() ||
         // Allow updating impact stats
         (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['impact']));
+    }
+
+    // ===============================================================
+    // Payment Rules
+    // ===============================================================
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.sellerId == request.auth.uid || isAdmin());
+      allow create: if isAuthorized() && request.resource.data.userId == request.auth.uid;
     }
 
     // ===============================================================

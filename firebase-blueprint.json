@@ -24,9 +24,26 @@
             "co2Saved": { "type": "number" }
           }
         },
+        "upiId": { "type": "string", "description": "User's UPI ID for direct P2P payments" },
         "blocked": { "type": "boolean", "description": "Whether the user is blocked by admin" }
       },
       "required": ["uid", "displayName", "email", "role"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A record of a P2P payment between users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the buyer/payer" },
+        "sellerId": { "type": "string", "description": "UID of the seller/payee" },
+        "wasteId": { "type": "string", "description": "ID of the waste item" },
+        "requestId": { "type": "string", "description": "ID of the swap request" },
+        "amount": { "type": "number", "description": "Amount paid in Rupees" },
+        "status": { "type": "string", "enum": ["pending", "completed"], "description": "Payment status" },
+        "screenshotUrl": { "type": "string", "format": "uri", "description": "Optional URL of the payment screenshot" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "sellerId", "requestId", "amount", "status", "createdAt"]
     },
     "WasteItem": {
       "title": "WasteItem",
@@ -136,6 +153,10 @@
     "/swapRequests/{requestId}/messages/{messageId}": {
       "schema": "ChatMessage",
       "description": "Messages for a specific swap request"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "P2P payment records"
     },
     "/upcyclePosts/{postId}": {
       "schema": "UpcyclePost",

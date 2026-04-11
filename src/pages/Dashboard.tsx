@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment
 import { auth, db } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
-import { Leaf, Award, TrendingUp, Package, ArrowRight, MessageSquare, Star, MapPin, Zap, Loader2 } from 'lucide-react';
+import { Leaf, Award, TrendingUp, Package, ArrowRight, MessageSquare, Star, MapPin, Zap, Loader2, IndianRupee, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [myItems, setMyItems] = useState<any[]>([]);
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [receivedRequests, setReceivedRequests] = useState<any[]>([]);
+  const [receivedPayments, setReceivedPayments] = useState<any[]>([]);
   const [pendingItemsIds, setPendingItemsIds] = useState<Set<string>>(new Set());
   const [recommendations, setRecommendations] = useState<any>(null);
   const [loadingRecs, setLoadingRecs] = useState(false);
@@ -107,6 +108,12 @@ export default function Dashboard() {
       
       // Fetch user profile
       const fetchProfile = async () => {
+        const cacheKey = `profile_${user.uid}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          setUserProfile(JSON.parse(cached));
+        }
+
         try {
           const idToken = await user.getIdToken();
           const response = await axios.get('/api/user/profile', {
@@ -115,6 +122,7 @@ export default function Dashboard() {
           });
           const data = response.data;
           setUserProfile(data);
+          localStorage.setItem(cacheKey, JSON.stringify(data));
           fetchRecommendations(data.location);
         } catch (err: any) {
           console.error('Failed to fetch profile via API:', err);
@@ -145,6 +153,12 @@ export default function Dashboard() {
 
       // Fetch my items
       const fetchMyItems = async () => {
+        const cacheKey = `items_${user.uid}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          setMyItems(JSON.parse(cached));
+        }
+
         try {
           const idToken = await user.getIdToken();
           const response = await axios.get('/api/user/items', {
@@ -152,6 +166,7 @@ export default function Dashboard() {
             timeout: 12000
           });
           setMyItems(response.data);
+          localStorage.setItem(cacheKey, JSON.stringify(response.data));
         } catch (err) {
           console.error('Failed to fetch items via API:', err);
         }
@@ -162,6 +177,7 @@ export default function Dashboard() {
       let unsubItems = () => {};
       let unsubReqs = () => {};
       let unsubRecv = () => {};
+      let unsubPayments = () => {};
 
       const setupListeners = async () => {
         // Check quota status first
@@ -183,9 +199,11 @@ export default function Dashboard() {
         unsubItems = onSnapshot(qItems, (snap) => {
           setMyItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         }, (error) => {
-          console.error('My Items Snapshot Error:', error);
           if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            console.warn('My Items Snapshot: Quota reached, using last known data');
             setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          } else {
+            console.error('My Items Snapshot Error:', error);
           }
         });
 
@@ -199,9 +217,11 @@ export default function Dashboard() {
           });
           setMyRequests(docs);
         }, (error) => {
-          console.error('My Requests Snapshot Error:', error);
           if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            console.warn('My Requests Snapshot: Quota reached');
             setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          } else {
+            console.error('My Requests Snapshot Error:', error);
           }
         });
 
@@ -223,10 +243,19 @@ export default function Dashboard() {
           });
           setPendingItemsIds(pendingIds);
         }, (error) => {
-          console.error('Received Requests Snapshot Error:', error);
           if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            console.warn('Received Requests Snapshot: Quota reached');
             setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          } else {
+            console.error('Received Requests Snapshot Error:', error);
           }
+        });
+
+        const qPayments = query(collection(db, 'payments'), where('sellerId', '==', user.uid));
+        unsubPayments = onSnapshot(qPayments, (snap) => {
+          setReceivedPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (error) => {
+          console.error('Payments Snapshot Error:', error);
         });
       };
 
@@ -234,6 +263,14 @@ export default function Dashboard() {
 
       // Fetch requests via API as well
       const fetchRequests = async () => {
+        const cacheKey = `requests_${user.uid}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const data = JSON.parse(cached);
+          setMyRequests(data.sent);
+          setReceivedRequests(data.received);
+        }
+
         try {
           const idToken = await user.getIdToken();
           const response = await axios.get('/api/user/requests', {
@@ -242,6 +279,7 @@ export default function Dashboard() {
           });
           setMyRequests(response.data.sent);
           setReceivedRequests(response.data.received);
+          localStorage.setItem(cacheKey, JSON.stringify(response.data));
           
           const pendingIds = new Set<string>();
           response.data.received.forEach((req: any) => {
@@ -260,6 +298,7 @@ export default function Dashboard() {
         unsubItems();
         unsubReqs();
         unsubRecv();
+        unsubPayments();
       };
     });
 
@@ -585,6 +624,56 @@ export default function Dashboard() {
             )}
           </div>
         </section>
+
+        {/* Received Payments (For Sellers) */}
+        {receivedPayments.length > 0 && (
+          <section>
+            <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-2">
+              <IndianRupee className="w-6 h-6 text-emerald-600" /> Received Payments
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {receivedPayments.map(payment => (
+                <div key={payment.id} className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                        <CheckCircle2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-stone-900">₹{payment.amount} Received</div>
+                        <div className="text-[10px] text-stone-400 uppercase font-bold">{formatDate(payment.createdAt)}</div>
+                      </div>
+                    </div>
+                    <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+                      {payment.status}
+                    </span>
+                  </div>
+                  
+                  {payment.screenshotUrl && (
+                    <div className="mt-2">
+                      <p className="text-[10px] text-stone-400 uppercase font-bold mb-2">Payment Screenshot</p>
+                      <img 
+                        src={payment.screenshotUrl} 
+                        alt="Payment Proof" 
+                        className="w-full h-32 object-cover rounded-2xl border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => window.open(payment.screenshotUrl, '_blank')}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => navigate(`/chat/${payment.requestId}`)}
+                      className="text-xs font-bold text-emerald-600 hover:underline"
+                    >
+                      View Swap Request & Chat
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* My Requests (Sent) */}
         <section>

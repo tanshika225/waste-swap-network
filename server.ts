@@ -381,6 +381,7 @@ async function startServer() {
 
       let items: any[] = [];
       try {
+        console.log(`[DEBUG] Fetching waste items. Database ID: ${firebaseConfig.firestoreDatabaseId || 'default'}`);
         let query: admin.firestore.Query = db.collection('wasteItems')
           .where('status', '==', 'available');
         
@@ -395,6 +396,7 @@ async function startServer() {
 
         const snapshot = await query.get();
         items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        console.log(`[DEBUG] Found ${items.length} available items in database.`);
       } catch (queryError: any) {
         handleQuotaError(queryError, 'waste-items-query');
         
@@ -458,6 +460,7 @@ async function startServer() {
         wasteItemsCache = { data: paginatedItems, timestamp: Date.now() };
       }
 
+      isQuotaExhausted = false; // Reset if successful
       res.json(paginatedItems);
     } catch (error: any) {
       console.error("Fetch Waste Items Error:", error);
@@ -678,6 +681,66 @@ async function startServer() {
       message: "Payment status updated successfully",
       details: { requestId, paymentMethod, amount, confirmedAt: new Date().toISOString() }
     });
+  });
+
+  app.post("/api/debug/seed-items", async (req, res) => {
+    try {
+      const sampleItems = [
+        {
+          title: "Premium Plastic Bottles",
+          description: "A collection of high-quality PET bottles, cleaned and ready for recycling or upcycling projects.",
+          category: "plastic",
+          estimatedValue: 25,
+          estimatedWeightKg: 1.5,
+          isBiodegradable: false,
+          imageUrl: "https://picsum.photos/seed/plastic/800/600",
+          ownerId: "system-seed",
+          status: "available",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          location: { lat: 13.0827, lng: 80.2707 }, // Chennai
+          requestCount: 0
+        },
+        {
+          title: "Old Newspaper Stack",
+          description: "Clean newspapers from the last month. Perfect for paper mache or recycling.",
+          category: "paper",
+          estimatedValue: 15,
+          estimatedWeightKg: 5,
+          isBiodegradable: true,
+          imageUrl: "https://picsum.photos/seed/paper/800/600",
+          ownerId: "system-seed",
+          status: "available",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          location: { lat: 13.0475, lng: 80.2089 },
+          requestCount: 0
+        },
+        {
+          title: "Assorted Metal Cans",
+          description: "Aluminum and tin cans, washed and crushed. Great for scrap metal collectors.",
+          category: "metal",
+          estimatedValue: 40,
+          estimatedWeightKg: 3,
+          isBiodegradable: false,
+          imageUrl: "https://picsum.photos/seed/metal/800/600",
+          ownerId: "system-seed",
+          status: "available",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          location: { lat: 12.9171, lng: 80.1923 },
+          requestCount: 0
+        }
+      ];
+
+      const batch = db.batch();
+      sampleItems.forEach(item => {
+        const ref = db.collection('wasteItems').doc();
+        batch.set(ref, item);
+      });
+      await batch.commit();
+
+      res.json({ success: true, message: "Sample items seeded" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Admin Routes

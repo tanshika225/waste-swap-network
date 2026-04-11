@@ -363,12 +363,29 @@ export default function SwapPage() {
             <p className="text-stone-500 text-sm mb-6 max-w-xs mx-auto">
               We couldn't find any items matching your current filters or search.
             </p>
-            <button 
-              onClick={clearFilters}
-              className="text-emerald-600 font-bold hover:underline text-sm"
-            >
-              Clear all filters
-            </button>
+            <div className="flex flex-col gap-3 items-center">
+              <button 
+                onClick={clearFilters}
+                className="text-emerald-600 font-bold hover:underline text-sm"
+              >
+                Clear all filters
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    toast.info("Seeding sample data...");
+                    await axios.post('/api/debug/seed-items');
+                    toast.success("Sample data added! Refreshing...");
+                    window.location.reload();
+                  } catch (err) {
+                    toast.error("Failed to seed data");
+                  }
+                }}
+                className="text-stone-400 hover:text-stone-600 text-xs font-medium"
+              >
+                Seed sample data (Debug)
+              </button>
+            </div>
           </div>
         )}
     </div>

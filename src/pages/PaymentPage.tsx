@@ -32,12 +32,7 @@ export default function PaymentPage() {
     const fetchSellerDetails = async () => {
       try {
         setLoading(true);
-        // 1. Fetch swap request to get ownerId
-        const reqSnap = await axios.get(`/api/user/requests`); // This is a bit inefficient if it returns all, but let's see
-        // Actually, it's better to have a specific request API or just use Firestore if allowed
-        // But I'll try to find it in the list first or use a direct fetch if I had one
-        
-        // Let's use direct Firestore for specific request details to be precise
+        // 1. Fetch swap request directly from Firestore
         const requestDoc = await getDoc(doc(db, 'swapRequests', requestId));
         if (requestDoc.exists()) {
           const reqData = requestDoc.data();

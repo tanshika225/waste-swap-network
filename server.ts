@@ -40,7 +40,7 @@ try {
   // Quota management variables
   let isQuotaExhausted = false;
   let quotaExhaustedAt = 0;
-  const QUOTA_COOLDOWN = 4 * 60 * 60 * 1000; // 4 hours cooldown if quota hit
+  const QUOTA_COOLDOWN = 30 * 60 * 1000; // 30 minutes cooldown if quota hit
 
   function handleQuotaError(error: any, context: string) {
     const isQuotaError = error.message?.includes('RESOURCE_EXHAUSTED') || 
@@ -244,6 +244,7 @@ async function startServer() {
         return res.json({ sent: [], received: [] });
       }
 
+      // Use a shorter timeout for Firestore queries to prevent hanging
       const sentSnapshot = await db.collection('swapRequests').where('requesterId', '==', user.uid).get();
       const receivedSnapshot = await db.collection('swapRequests').where('ownerId', '==', user.uid).get();
       
@@ -381,32 +382,29 @@ async function startServer() {
       let items: any[] = [];
       try {
         let query: admin.firestore.Query = db.collection('wasteItems')
-          .where('status', '==', 'available')
-          .orderBy('createdAt', 'desc');
+          .where('status', '==', 'available');
         
+        // If we have a specific category, we can use it in the query
         if (wasteType) {
           query = query.where('category', '==', wasteType);
         }
         
-        // If we are not using geo-filtering, we can use Firestore pagination
-        // If we ARE using geo-filtering, we have to fetch more and filter in memory
-        const fetchLimit = (lat && lng) ? 100 : pageSize * pageNum;
-        query = query.limit(fetchLimit);
+        // Always limit the query to prevent massive reads
+        const fetchLimit = (lat && lng) ? 50 : pageSize * pageNum;
+        query = query.orderBy('createdAt', 'desc').limit(fetchLimit);
 
         const snapshot = await query.get();
         items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-        console.log(`Waste items query returned ${items.length} items`);
       } catch (queryError: any) {
-        console.warn("Complex query failed, likely missing index. Falling back to simple query.", queryError.message);
         handleQuotaError(queryError, 'waste-items-query');
-        // Fallback: Simple query without complex ordering/filtering
+        
+        // Fallback: Simple query without complex ordering/filtering if index is missing or quota hit
         const fallbackSnapshot = await db.collection('wasteItems')
           .where('status', '==', 'available')
-          .limit(200) // Fetch more for manual filtering
+          .limit(50) 
           .get();
         
         items = fallbackSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-        console.log(`Waste items fallback query returned ${items.length} items`);
         
         // Manual sort by createdAt if available
         items.sort((a, b) => {

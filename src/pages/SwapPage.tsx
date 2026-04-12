@@ -373,6 +373,34 @@ export default function SwapPage() {
               <button 
                 onClick={async () => {
                   try {
+                    await axios.post('/api/debug/reset-quota');
+                    toast.success("Quota flag reset! Refreshing...");
+                    window.location.reload();
+                  } catch (err) {
+                    toast.error("Failed to reset quota");
+                  }
+                }}
+                className="text-stone-400 hover:text-stone-600 text-xs font-medium"
+              >
+                Reset Quota Flag (Debug)
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    const res = await axios.get('/api/debug/waste-items');
+                    console.log('Backend Debug Info:', res.data);
+                    toast.info(`Backend sees ${res.data.count} items. Check console for details.`);
+                  } catch (err) {
+                    toast.error("Failed to fetch debug info");
+                  }
+                }}
+                className="text-stone-400 hover:text-stone-600 text-xs font-medium"
+              >
+                Check backend items (Debug)
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
                     toast.info("Seeding sample data...");
                     await axios.post('/api/debug/seed-items');
                     toast.success("Sample data added! Refreshing...");

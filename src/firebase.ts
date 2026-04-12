@@ -4,8 +4,10 @@ import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
+console.log('[DEBUG] Firebase initialized with project:', firebaseConfig.projectId);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+console.log('[DEBUG] Firestore initialized with database:', firebaseConfig.firestoreDatabaseId || '(default)');
 
 // Enable offline persistence to save quota and improve performance
 if (typeof window !== 'undefined') {

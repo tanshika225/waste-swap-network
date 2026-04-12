@@ -358,13 +358,15 @@ async function startServer() {
 
   app.get("/api/waste-items", async (req, res) => {
     try {
+      console.log(`[DEBUG] Incoming request to /api/waste-items. Database: ${firebaseConfig.projectId}/${firebaseConfig.firestoreDatabaseId || '(default)'}. Quota status: ${isQuotaExhausted}`);
+      
       // Circuit breaker for waste items
       if (isQuotaExhausted && (Date.now() - quotaExhaustedAt < QUOTA_COOLDOWN)) {
+        console.warn("[DEBUG] Circuit breaker active. Serving cached/mock data.");
         if (wasteItemsCache) return res.json(wasteItemsCache.data);
-        // Fallback to some mock data if cache is empty during quota exhaustion
         return res.json([
-          { id: 'mock-1', title: 'Recyclable Paper (Cached)', category: 'paper', estimatedValue: 10, status: 'available', imageUrl: 'https://picsum.photos/seed/paper/400/300' },
-          { id: 'mock-2', title: 'Metal Scrap (Cached)', category: 'metal', estimatedValue: 50, status: 'available', imageUrl: 'https://picsum.photos/seed/metal/400/300' }
+          { id: 'mock-1', title: 'Recyclable Paper (Quota Limited)', category: 'paper', estimatedValue: 10, status: 'available', imageUrl: 'https://picsum.photos/seed/paper/400/300' },
+          { id: 'mock-2', title: 'Metal Scrap (Quota Limited)', category: 'metal', estimatedValue: 50, status: 'available', imageUrl: 'https://picsum.photos/seed/metal/400/300' }
         ]);
       }
 
@@ -381,7 +383,7 @@ async function startServer() {
 
       let items: any[] = [];
       try {
-        console.log(`[DEBUG] Fetching waste items. Database ID: ${firebaseConfig.firestoreDatabaseId || 'default'}`);
+        console.log(`[DEBUG] Querying wasteItems collection...`);
         let query: admin.firestore.Query = db.collection('wasteItems')
           .where('status', '==', 'available');
         
@@ -398,15 +400,18 @@ async function startServer() {
         items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
         console.log(`[DEBUG] Found ${items.length} available items in database.`);
       } catch (queryError: any) {
+        console.error(`[DEBUG] Waste items query failed: ${queryError.message}`);
         handleQuotaError(queryError, 'waste-items-query');
         
         // Fallback: Simple query without complex ordering/filtering if index is missing or quota hit
+        console.log(`[DEBUG] Attempting fallback query...`);
         const fallbackSnapshot = await db.collection('wasteItems')
           .where('status', '==', 'available')
           .limit(50) 
           .get();
         
         items = fallbackSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        console.log(`[DEBUG] Fallback query returned ${items.length} items.`);
         
         // Manual sort by createdAt if available
         items.sort((a, b) => {
@@ -681,6 +686,33 @@ async function startServer() {
       message: "Payment status updated successfully",
       details: { requestId, paymentMethod, amount, confirmedAt: new Date().toISOString() }
     });
+  });
+
+  app.post("/api/debug/reset-quota", (req, res) => {
+    isQuotaExhausted = false;
+    quotaExhaustedAt = 0;
+    console.log('[DEBUG] Quota exhaustion flag manually reset.');
+    res.json({ success: true, message: "Quota flag reset" });
+  });
+
+  app.get("/api/debug/waste-items", async (req, res) => {
+    try {
+      const snapshot = await db.collection('wasteItems').limit(10).get();
+      const items = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        status: doc.data().status,
+        ownerId: doc.data().ownerId,
+        title: doc.data().title,
+        createdAt: doc.data().createdAt
+      }));
+      res.json({
+        count: snapshot.size,
+        items,
+        databaseId: firebaseConfig.firestoreDatabaseId || 'default'
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   app.post("/api/debug/seed-items", async (req, res) => {

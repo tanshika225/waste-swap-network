@@ -88,7 +88,7 @@ export default function UploadWaste() {
         return;
       }
 
-      await addDoc(collection(db, 'wasteItems'), {
+      const docRef = await addDoc(collection(db, 'wasteItems'), {
         ownerId: auth.currentUser.uid,
         ownerName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Anonymous',
         title,
@@ -104,6 +104,7 @@ export default function UploadWaste() {
         createdAt: serverTimestamp(),
         location: userLocation || { lat: 13.0827, lng: 80.2707 } // Use user location or default Chennai
       });
+      console.log('[DEBUG] Waste item added with ID:', docRef.id);
       toast.success('Item listed for swap successfully! ♻️');
       navigate('/dashboard');
     } catch (error) {

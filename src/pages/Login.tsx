@@ -3,6 +3,7 @@ import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, create
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { Recycle, LogIn, ShieldCheck, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -208,13 +209,27 @@ export default function Login() {
           By continuing, you agree to our <span className="underline cursor-pointer">Terms of Service</span> and <span className="underline cursor-pointer">Privacy Policy</span>.
         </p>
 
-        <div className="mt-10 pt-8 border-t border-stone-100">
+        <div className="mt-10 pt-8 border-t border-stone-100 flex flex-col gap-4">
           <button 
             onClick={() => navigate('/admin/login')}
             className="text-stone-400 hover:text-stone-900 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 mx-auto transition-colors"
           >
             <ShieldCheck className="w-4 h-4" />
             Admin Portal
+          </button>
+          
+          <button 
+            onClick={async () => {
+              try {
+                await axios.post('/api/debug/reset-quota');
+                toast.success("Quota flag reset!");
+              } catch (err) {
+                toast.error("Failed to reset quota");
+              }
+            }}
+            className="text-stone-300 hover:text-stone-500 font-bold text-[9px] uppercase tracking-widest transition-colors"
+          >
+            Reset Quota (Debug)
           </button>
         </div>
       </motion.div>

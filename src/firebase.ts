@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, getDocFromServer, doc } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -9,18 +9,21 @@ export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 console.log('[DEBUG] Firestore initialized with database:', firebaseConfig.firestoreDatabaseId || '(default)');
 
-// Enable offline persistence to save quota and improve performance
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      // Multiple tabs open, persistence can only be enabled in one tab at a time.
-      console.warn('Firestore persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      // The current browser does not support all of the features required to enable persistence
-      console.warn('Firestore persistence failed: Browser not supported');
+// Connection test as recommended in instructions
+async function testConnection() {
+  try {
+    // Attempt to fetch a non-existent doc from server to verify connectivity
+    await getDocFromServer(doc(db, '_debug_', 'connection_test'));
+    console.log('[DEBUG] Firestore connection test successful');
+  } catch (error: any) {
+    if (error.message?.includes('the client is offline') || error.message?.includes('Could not reach Cloud Firestore backend')) {
+      console.error("CRITICAL: Firestore is offline. Check Firebase configuration and API status.");
     }
-  });
+    // Other errors (like permission denied) are expected if rules are strict, 
+    // but they still prove we reached the server.
+  }
 }
+testConnection();
 
 export enum OperationType {
   CREATE = 'create',

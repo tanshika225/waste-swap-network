@@ -14,13 +14,6 @@ if (!admin.apps.length) {
     projectId: firebaseConfig.projectId,
   });
   console.log('Firebase Admin initialized with project:', firebaseConfig.projectId);
-  
-  // Log the service account identity if possible
-  admin.auth().listUsers(1).then(() => {
-    console.log('Admin SDK successfully authenticated');
-  }).catch(err => {
-    console.log('Admin SDK Identity Info:', err.message);
-  });
 }
 
 // Try to get the specific database, fallback to default if needed
@@ -78,11 +71,18 @@ try {
 
     const idToken = authHeader.split('Bearer ')[1];
     try {
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      // Add a timeout to verifyIdToken to prevent hanging the request
+      const verifyPromise = admin.auth().verifyIdToken(idToken);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth timeout')), 8000)
+      );
+      
+      const decodedToken = await Promise.race([verifyPromise, timeoutPromise]) as admin.auth.DecodedIdToken;
       (req as any).user = decodedToken;
       next();
-    } catch (error) {
-      res.status(401).json({ error: 'Invalid token' });
+    } catch (error: any) {
+      console.error('Authentication error:', error.message);
+      res.status(401).json({ error: 'Invalid token or auth timeout' });
     }
   };
 
@@ -94,7 +94,12 @@ try {
 
     const idToken = authHeader.split('Bearer ')[1];
     try {
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const verifyPromise = admin.auth().verifyIdToken(idToken);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth timeout')), 8000)
+      );
+      
+      const decodedToken = await Promise.race([verifyPromise, timeoutPromise]) as admin.auth.DecodedIdToken;
       
       // Explicitly remove jstanshika1402@gmail.com from admin role as requested
       if (decodedToken.email === 'jstanshika1402@gmail.com') {
@@ -129,11 +134,20 @@ try {
       }
 
       try {
-        const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+        const userDocPromise = db.collection('users').doc(decodedToken.uid).get();
+        const fsTimeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Firestore timeout')), 8000)
+        );
+        
+        const userDoc = await Promise.race([userDocPromise, fsTimeoutPromise]) as admin.firestore.DocumentSnapshot;
         const isUserAdmin = userDoc.data()?.role === 'admin';
         
         if (isUserAdmin) {
-          await admin.auth().setCustomUserClaims(decodedToken.uid, { role: 'admin' });
+          try {
+            await admin.auth().setCustomUserClaims(decodedToken.uid, { role: 'admin' });
+          } catch (claimErr: any) {
+            console.warn('Failed to set custom claims (Identity Toolkit API might be disabled):', claimErr.message);
+          }
         }
         
         adminCache.set(decodedToken.uid, { isAdmin: isUserAdmin, timestamp: Date.now() });
@@ -180,7 +194,13 @@ async function startServer() {
         });
       }
 
-      const docSnap = await db.collection('users').doc(user.uid).get();
+      const docSnapPromise = db.collection('users').doc(user.uid).get();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Firestore timeout')), 8000)
+      );
+      
+      const docSnap = await Promise.race([docSnapPromise, timeoutPromise]) as admin.firestore.DocumentSnapshot;
+      
       if (!docSnap.exists) return res.status(404).json({ error: "Profile not found" });
       
       const data = docSnap.data();
@@ -215,10 +235,16 @@ async function startServer() {
         return res.json([]);
       }
 
-      const snapshot = await db.collection('wasteItems')
+      const queryPromise = db.collection('wasteItems')
         .where('ownerId', '==', user.uid)
         .orderBy('createdAt', 'desc')
         .get();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Firestore timeout')), 8000)
+      );
+      
+      const snapshot = await Promise.race([queryPromise, timeoutPromise]) as admin.firestore.QuerySnapshot;
       
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       userItemsCache.set(user.uid, { data: items, timestamp: Date.now() });
@@ -229,7 +255,7 @@ async function startServer() {
       if (cached) return res.json(cached.data);
       
       const isQuota = error.message?.includes('RESOURCE_EXHAUSTED') || error.code === 8 || error.details?.includes('Quota exceeded');
-      if (isQuota) return res.json([]); // Return empty list instead of 500
+      if (isQuota) return res.json([]); 
       
       res.status(500).json({ error: error.message });
     }
@@ -244,9 +270,17 @@ async function startServer() {
         return res.json({ sent: [], received: [] });
       }
 
-      // Use a shorter timeout for Firestore queries to prevent hanging
-      const sentSnapshot = await db.collection('swapRequests').where('requesterId', '==', user.uid).get();
-      const receivedSnapshot = await db.collection('swapRequests').where('ownerId', '==', user.uid).get();
+      const sentPromise = db.collection('swapRequests').where('requesterId', '==', user.uid).get();
+      const receivedPromise = db.collection('swapRequests').where('ownerId', '==', user.uid).get();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Firestore timeout')), 8000)
+      );
+      
+      const [sentSnapshot, receivedSnapshot] = await Promise.race([
+        Promise.all([sentPromise, receivedPromise]),
+        timeoutPromise
+      ]) as [admin.firestore.QuerySnapshot, admin.firestore.QuerySnapshot];
       
       const requests = {
         sent: sentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
@@ -296,14 +330,20 @@ async function startServer() {
 
   // API routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "Waste Swap Network API is running" });
+    res.json({ 
+      status: "ok", 
+      message: "Waste Swap Network API is running",
+      projectId: firebaseConfig.projectId,
+      databaseId: firebaseConfig.firestoreDatabaseId || 'default'
+    });
   });
 
   app.get("/api/quota-status", (req, res) => {
     const active = isQuotaExhausted && (Date.now() - quotaExhaustedAt < QUOTA_COOLDOWN);
     res.json({ 
       isQuotaExhausted: active,
-      remainingCooldown: active ? Math.max(0, QUOTA_COOLDOWN - (Date.now() - quotaExhaustedAt)) : 0
+      exhaustedAt: quotaExhaustedAt,
+      cooldownRemaining: active ? Math.max(0, QUOTA_COOLDOWN - (Date.now() - quotaExhaustedAt)) : 0
     });
   });
 
@@ -490,14 +530,6 @@ async function startServer() {
   // Simple in-memory cache for recommendations
   let recommendationsCache: { data: any, timestamp: number } | null = null;
   const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
-
-  app.get("/api/quota-status", (req, res) => {
-    res.json({
-      isExhausted: isQuotaExhausted,
-      exhaustedAt: quotaExhaustedAt,
-      cooldownRemaining: isQuotaExhausted ? Math.max(0, QUOTA_COOLDOWN - (Date.now() - quotaExhaustedAt)) : 0
-    });
-  });
 
   app.get("/api/recommendations", async (req, res) => {
     try {
@@ -911,13 +943,20 @@ async function startServer() {
     }
   });
 
+  // Start listening immediately to handle API requests while Vite is initializing
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    console.log("[DEBUG] Initializing Vite server...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
+    console.log("[DEBUG] Vite server initialized.");
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -925,10 +964,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } 
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 function calculateDistance(loc1: { lat: number; lng: number }, loc2: { lat: number; lng: number }): number {

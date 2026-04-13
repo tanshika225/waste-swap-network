@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { collection, query, where, orderBy, limit, getDocs, startAfter } from 'firebase/firestore';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { Search, Navigation, Filter, X, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { getCurrentLocation, Location } from '../lib/location';
@@ -57,24 +57,61 @@ export default function SwapPage() {
           params.radius = radius;
         }
 
-        const response = await axios.get('/api/waste-items', { 
-          params,
-          timeout: 10000 // 10s timeout
-        });
-        const newItems = response.data;
-        console.log(`Fetched ${newItems.length} items from server`, { params });
-        
-        if (isLoadMore) {
-          setItems(prev => [...prev, ...newItems]);
-          setPage(prev => prev + 1);
-        } else {
-          setItems(newItems);
-          setPage(1);
+        try {
+          const response = await axios.get('/api/waste-items', { 
+            params,
+            timeout: 8000 // Slightly shorter timeout for faster fallback
+          });
+          const newItems = response.data;
+          console.log(`Fetched ${newItems.length} items from server`, { params });
+          
+          if (isLoadMore) {
+            setItems(prev => [...prev, ...newItems]);
+            setPage(prev => prev + 1);
+          } else {
+            setItems(newItems);
+            setPage(1);
+          }
+          
+          setHasMore(newItems.length === 12);
+        } catch (apiError) {
+          console.warn('API fetch failed, falling back to direct Firestore:', apiError);
+          
+          // Fallback to direct Firestore
+          let q = query(
+            collection(db, 'wasteItems'),
+            where('status', '==', 'available'),
+            orderBy('createdAt', 'desc'),
+            limit(24) // Fetch a bit more for client-side filtering
+          );
+
+          const snapshot = await getDocs(q);
+          let firestoreItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+          // Basic client-side filtering for the fallback
+          if (wasteType) {
+            firestoreItems = firestoreItems.filter((item: any) => item.category === wasteType);
+          }
+          if (debouncedSearch) {
+            const s = debouncedSearch.toLowerCase();
+            firestoreItems = firestoreItems.filter((item: any) => 
+              item.title?.toLowerCase().includes(s) || 
+              item.description?.toLowerCase().includes(s)
+            );
+          }
+          if (minPrice) {
+            firestoreItems = firestoreItems.filter((item: any) => item.estimatedValue >= Number(minPrice));
+          }
+          if (maxPrice) {
+            firestoreItems = firestoreItems.filter((item: any) => item.estimatedValue <= Number(maxPrice));
+          }
+
+          setItems(firestoreItems);
+          setHasMore(false); // Pagination is harder with client-side fallback
         }
-        
-        setHasMore(newItems.length === 12);
       } catch (error) {
         console.error('Failed to fetch items:', error);
+        toast.error('Failed to load items. Please check your connection.');
       } finally {
         setLoading(false);
         setLoadingMore(false);

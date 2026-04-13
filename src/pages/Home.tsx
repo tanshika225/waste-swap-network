@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
 import { Recycle, ArrowRight, ShieldCheck, Globe, Sparkles, Zap, MessageSquare, Scale, Leaf } from 'lucide-react';
@@ -11,11 +13,23 @@ export default function Home() {
   useEffect(() => {
     const fetchRecentItems = async () => {
       try {
-        const response = await axios.get('/api/waste-items');
+        const response = await axios.get('/api/waste-items', { timeout: 5000 });
         // Take only the first 4 available items
         setRecentItems(response.data.slice(0, 4));
       } catch (error) {
-        console.error('Failed to fetch recent items:', error);
+        console.warn('Failed to fetch recent items via API, falling back to direct Firestore:', error);
+        try {
+          const q = query(
+            collection(db, 'wasteItems'),
+            where('status', '==', 'available'),
+            orderBy('createdAt', 'desc'),
+            limit(4)
+          );
+          const snapshot = await getDocs(q);
+          setRecentItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (fsError) {
+          console.error('Firestore fallback failed:', fsError);
+        }
       }
     };
     fetchRecentItems();
@@ -132,9 +146,24 @@ export default function Home() {
             <h2 className="text-3xl md:text-4xl font-black text-stone-900 tracking-tight">Latest Listings</h2>
             <p className="text-sm md:text-base text-stone-500 font-medium">Items available for swap near you</p>
           </div>
-          <Link to="/swaps" className="text-emerald-600 font-black hover:text-emerald-700 transition-colors flex items-center gap-2 group text-sm md:text-base">
-            View all items <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <Link to="/swaps" className="text-emerald-600 font-black hover:text-emerald-700 transition-colors flex items-center gap-2 group text-sm md:text-base">
+              View all items <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
+            <button 
+              onClick={async () => {
+                try {
+                  await axios.post('/api/debug/reset-quota');
+                  window.location.reload();
+                } catch (err) {
+                  console.error("Failed to reset quota");
+                }
+              }}
+              className="text-stone-300 hover:text-stone-500 font-bold text-[9px] uppercase tracking-widest transition-colors"
+            >
+              Reset Quota (Debug)
+            </button>
+          </div>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
           {recentItems.map(item => (

@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
+import firebaseConfig from '../firebase-applet-config.json';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -38,6 +39,7 @@ export default function App() {
   const [isQuotaExhausted, setIsQuotaExhausted] = useState(false);
 
   useEffect(() => {
+    console.log('[DEBUG] App starting with Firebase Project:', firebaseConfig.projectId);
     const checkQuota = async () => {
       try {
         const res = await axios.get('/api/quota-status');

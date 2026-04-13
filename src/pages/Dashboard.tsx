@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment, writeBatch, orderBy, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';
 import { Leaf, Award, TrendingUp, Package, ArrowRight, MessageSquare, Star, MapPin, Zap, Loader2, IndianRupee, CheckCircle2 } from 'lucide-react';
@@ -52,12 +52,16 @@ export default function Dashboard() {
         });
       }
 
-      const checkQuota = async () => {
+      const checkQuota = async (retries = 2) => {
         try {
-          const res = await axios.get('/api/quota-status', { timeout: 5000 });
+          const res = await axios.get('/api/quota-status', { timeout: 4000 });
           setQuotaInfo(res.data);
         } catch (e) {
-          console.error('Failed to check quota status');
+          if (retries > 0) {
+            setTimeout(() => checkQuota(retries - 1), 2000);
+          } else {
+            console.error('Failed to check quota status after retries');
+          }
         }
       };
       checkQuota();
@@ -107,7 +111,7 @@ export default function Dashboard() {
       };
       
       // Fetch user profile
-      const fetchProfile = async () => {
+      const fetchProfile = async (retries = 2) => {
         const cacheKey = `profile_${user.uid}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -118,7 +122,7 @@ export default function Dashboard() {
           const idToken = await user.getIdToken();
           const response = await axios.get('/api/user/profile', {
             headers: { Authorization: `Bearer ${idToken}` },
-            timeout: 12000 // Increased timeout
+            timeout: 10000 
           });
           const data = response.data;
           setUserProfile(data);
@@ -126,6 +130,11 @@ export default function Dashboard() {
           fetchRecommendations(data.location);
         } catch (err: any) {
           console.error('Failed to fetch profile via API:', err);
+          
+          if (retries > 0 && (err.code === 'ECONNABORTED' || err.response?.status >= 500)) {
+            setTimeout(() => fetchProfile(retries - 1), 2000);
+            return;
+          }
           
           // Check if it's a quota error or timeout
           const isQuota = err.message?.includes('quota') || err.response?.data?.error?.includes('Quota') || err.code === 'resource-exhausted';
@@ -163,12 +172,25 @@ export default function Dashboard() {
           const idToken = await user.getIdToken();
           const response = await axios.get('/api/user/items', {
             headers: { Authorization: `Bearer ${idToken}` },
-            timeout: 12000
+            timeout: 8000
           });
           setMyItems(response.data);
           localStorage.setItem(cacheKey, JSON.stringify(response.data));
         } catch (err) {
-          console.error('Failed to fetch items via API:', err);
+          console.warn('Failed to fetch items via API, falling back to direct Firestore:', err);
+          try {
+            const q = query(
+              collection(db, 'wasteItems'),
+              where('ownerId', '==', user.uid),
+              orderBy('createdAt', 'desc')
+            );
+            const snapshot = await getDocs(q);
+            const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setMyItems(items);
+            localStorage.setItem(cacheKey, JSON.stringify(items));
+          } catch (fsErr) {
+            console.error('Firestore fallback for items failed:', fsErr);
+          }
         }
       };
       fetchMyItems();
@@ -203,7 +225,7 @@ export default function Dashboard() {
             console.warn('My Items Snapshot: Quota reached, using last known data');
             setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
           } else {
-            console.error('My Items Snapshot Error:', error);
+            handleFirestoreError(error, OperationType.LIST, 'wasteItems');
           }
         });
 
@@ -221,7 +243,7 @@ export default function Dashboard() {
             console.warn('My Requests Snapshot: Quota reached');
             setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
           } else {
-            console.error('My Requests Snapshot Error:', error);
+            handleFirestoreError(error, OperationType.LIST, 'swapRequests/my');
           }
         });
 
@@ -247,7 +269,7 @@ export default function Dashboard() {
             console.warn('Received Requests Snapshot: Quota reached');
             setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
           } else {
-            console.error('Received Requests Snapshot Error:', error);
+            handleFirestoreError(error, OperationType.LIST, 'swapRequests/received');
           }
         });
 
@@ -255,7 +277,12 @@ export default function Dashboard() {
         unsubPayments = onSnapshot(qPayments, (snap) => {
           setReceivedPayments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         }, (error) => {
-          console.error('Payments Snapshot Error:', error);
+          if (error.message?.includes('quota') || (error as any).code === 'resource-exhausted') {
+            console.warn('Payments Snapshot: Quota reached');
+            setQuotaInfo((prev: any) => ({ ...prev, isExhausted: true }));
+          } else {
+            handleFirestoreError(error, OperationType.LIST, 'payments');
+          }
         });
       };
 

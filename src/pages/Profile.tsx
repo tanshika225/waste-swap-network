@@ -157,13 +157,22 @@ export default function Profile() {
               <div className="w-full">
                 <div className="text-[10px] text-stone-400 uppercase font-bold">UPI ID (For Receiving Payments)</div>
                 {isEditing ? (
-                  <input 
-                    type="text"
-                    value={editData.upiId}
-                    onChange={(e) => setEditData({ ...editData, upiId: e.target.value })}
-                    placeholder="e.g. yourname@upi"
-                    className="w-full mt-1 p-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-sm"
-                  />
+                  <div className="space-y-2">
+                    <input 
+                      type="text"
+                      value={editData.upiId}
+                      onChange={(e) => setEditData({ ...editData, upiId: e.target.value })}
+                      placeholder="e.g. yourname@upi"
+                      className="w-full mt-1 p-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-sm"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setEditData({ ...editData, upiId: 'wasteswap@upi' })}
+                      className="text-[10px] text-emerald-600 font-bold hover:underline"
+                    >
+                      Use Demo UPI: wasteswap@upi
+                    </button>
+                  </div>
                 ) : (
                   <div className="font-bold text-sm md:text-base">{profile.upiId || 'Not set (Required for sellers)'}</div>
                 )}

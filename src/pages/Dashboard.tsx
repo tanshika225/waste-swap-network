@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment, writeBatch, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, increment, writeBatch, orderBy, serverTimestamp, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { motion } from 'motion/react';

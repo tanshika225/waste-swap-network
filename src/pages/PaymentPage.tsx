@@ -73,7 +73,7 @@ export default function PaymentPage() {
   };
 
   const handleConfirmPayment = async () => {
-    if (!sellerUpiId) {
+    if (!sellerUpiId && !searchParams.get('demo')) {
       toast.error("Cannot confirm: Seller UPI ID missing");
       return;
     }
@@ -86,7 +86,7 @@ export default function PaymentPage() {
         amount,
         wasteId,
         sellerId,
-        screenshotUrl: screenshot // Sending base64 for now as a simple solution
+        screenshotUrl: screenshot || "demo-simulation"
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -99,6 +99,11 @@ export default function PaymentPage() {
     } finally {
       setConfirming(false);
     }
+  };
+
+  const handleDemoSimulation = () => {
+    setSellerUpiId("wasteswap@upi");
+    toast.info("Demo Mode Activated: Using wasteswap@upi");
   };
 
   if (loading) {
@@ -141,6 +146,17 @@ export default function PaymentPage() {
             </div>
 
             <div className="flex flex-col items-center justify-center p-6 bg-stone-50 rounded-3xl border-2 border-dashed border-stone-200 mb-8">
+              {!sellerUpiId && (
+                <div className="mb-4 text-center">
+                  <p className="text-xs text-amber-600 font-bold mb-2 uppercase">Testing Mode</p>
+                  <button 
+                    onClick={handleDemoSimulation}
+                    className="px-4 py-2 bg-amber-100 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-200 transition-all"
+                  >
+                    Activate Demo UPI
+                  </button>
+                </div>
+              )}
               <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                 {sellerUpiId ? (
                   <QRCodeSVG 

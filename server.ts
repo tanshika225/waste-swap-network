@@ -374,7 +374,11 @@ async function startServer() {
       
       // Set custom claim to avoid future Firestore reads for this user
       if (role === 'admin') {
-        await admin.auth().setCustomUserClaims(user.uid, { role: 'admin' });
+        try {
+          await admin.auth().setCustomUserClaims(user.uid, { role: 'admin' });
+        } catch (claimErr: any) {
+          console.warn(`Failed to set custom claims for ${user.email} (Identity Toolkit API might be disabled):`, claimErr.message);
+        }
       }
       
       adminCache.set(user.uid, { isAdmin: role === 'admin', timestamp: Date.now() });

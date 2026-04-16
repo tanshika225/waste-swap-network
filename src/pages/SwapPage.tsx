@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { collection, query, where, orderBy, limit, getDocs, startAfter } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, startAfter, doc, updateDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import WasteCard from '../components/WasteCard';
 import { Search, Navigation, Filter, X, ChevronDown, Loader2, RefreshCw } from 'lucide-react';

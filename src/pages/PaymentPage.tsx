@@ -102,8 +102,8 @@ export default function PaymentPage() {
   };
 
   const handleDemoSimulation = () => {
-    setSellerUpiId("wasteswap@upi");
-    toast.info("Demo Mode Activated: Using wasteswap@upi");
+    setSellerUpiId("vishalinibasu1055@okhdfcbank");
+    toast.info("Demo Mode Activated: Using vishalinibasu1055@okhdfcbank");
   };
 
   if (loading) {

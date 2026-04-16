@@ -167,10 +167,10 @@ export default function Profile() {
                     />
                     <button 
                       type="button"
-                      onClick={() => setEditData({ ...editData, upiId: 'wasteswap@upi' })}
+                      onClick={() => setEditData({ ...editData, upiId: 'vishalinibasu1055@okhdfcbank' })}
                       className="text-[10px] text-emerald-600 font-bold hover:underline"
                     >
-                      Use Demo UPI: wasteswap@upi
+                      Use Demo UPI: vishalinibasu1055@okhdfcbank
                     </button>
                   </div>
                 ) : (
